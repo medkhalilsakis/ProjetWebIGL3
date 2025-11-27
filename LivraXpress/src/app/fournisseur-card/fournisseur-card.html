@@ -1,0 +1,39 @@
+<!-- fournisseur-card.html -->
+<a [routerLink]="['/client/fournisseur', fournisseur.id]" class="fournisseur-card">
+  <div class="card-header">
+    <div class="rating-badge">
+      <mat-icon>star</mat-icon>
+      <span>{{ fournisseur.noteMoyenne.toFixed(1) }}</span>
+    </div>
+  </div>
+  
+  <div class="card-image">
+    <img [src]="fournisseur.photoCouverture || 'assets/images/default-restaurant.jpg'" 
+         alt="{{ fournisseur.nomEntreprise }}"
+         onerror="this.src='assets/images/default-restaurant.jpg'">
+    <div class="status-indicator {{ fournisseur.statut === 'actif' ? 'online' : 'offline' }}"></div>
+  </div>
+  
+  <div class="card-content">
+    <h3 class="restaurant-name">{{ fournisseur.nomEntreprise }}</h3>
+    <div class="restaurant-info">
+      <div class="info-item">
+        <mat-icon>restaurant</mat-icon>
+        <span>{{ fournisseur.type | titlecase }}</span>
+      </div>
+      <div class="info-item">
+        <mat-icon>access_time</mat-icon>
+        <span>{{ fournisseur.tempsPreparationMoyen }} min</span>
+      </div>
+      <div class="info-item">
+        <mat-icon>local_shipping</mat-icon>
+        <span>{{ fournisseur.fraisLivraison }} DH</span>
+      </div>
+    </div>
+    
+    <div class="delivery-info">
+      <span class="delivery-time">Livraison en {{ fournisseur.tempsPreparationMoyen + 15 }} min</span>
+      <span class="delivery-fee">Frais de livraison: {{ fournisseur.fraisLivraison }} DH</span>
+    </div>
+  </div>
+</a>

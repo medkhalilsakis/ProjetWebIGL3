@@ -1,0 +1,91 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <div class="logo-section">
+      <div class="logo-circle">
+        <mat-icon class="logo-icon">local_shipping</mat-icon>
+      </div>
+      <h1 class="logo-text">DeliveryPro</h1>
+    </div>
+
+    <h2 class="welcome-title">Bienvenue !</h2>
+    <p class="welcome-subtitle">Connectez-vous pour accéder à votre compte</p>
+
+    @if (errorMessage(); as error) {
+      <div class="error-alert">
+        <mat-icon>error</mat-icon>
+        <span>{{ error }}</span>
+      </div>
+    }
+
+    <form [formGroup]="signInForm" (ngSubmit)="onSubmit()">
+      <div class="form-group">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Adresse email</mat-label>
+          <input matInput formControlName="email" type="email" placeholder="votre@email.com">
+          <mat-icon matSuffix>email</mat-icon>
+          @if (email?.invalid && (email?.dirty || email?.touched)) {
+            <mat-error>
+              @if (email?.hasError('required')) {
+                Email requis
+              } @else if (email?.hasError('email')) {
+                Format email invalide
+              }
+            </mat-error>
+          }
+        </mat-form-field>
+      </div>
+
+      <div class="form-group">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Mot de passe</mat-label>
+          <input matInput [type]="hidePassword() ? 'password' : 'text'" formControlName="password" placeholder="••••••••">
+          <mat-icon matSuffix (click)="hidePassword.set(!hidePassword())" class="password-toggle">
+            {{ hidePassword() ? 'visibility_off' : 'visibility' }}
+          </mat-icon>
+          @if (password?.invalid && (password?.dirty || password?.touched)) {
+            <mat-error>
+              @if (password?.hasError('required')) {
+                Mot de passe requis
+              } @else if (password?.hasError('minlength')) {
+                Minimum 6 caractères
+              }
+            </mat-error>
+          }
+        </mat-form-field>
+      </div>
+
+      <div class="form-group">
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Type de compte</mat-label>
+          <mat-select formControlName="role">
+            <mat-option value="client">Client (Commander)</mat-option>
+            <mat-option value="fournisseur">Fournisseur (Restaurant/Magasin)</mat-option>
+            <mat-option value="livreur">Livreur</mat-option>
+          </mat-select>
+        </mat-form-field>
+      </div>
+
+      <button mat-flat-button color="primary" type="submit" [disabled]="signInForm.invalid || isLoading()" class="submit-button">
+        @if (isLoading()) {
+          <span class="spinner"></span>
+          Chargement...
+        } @else {
+          Se connecter
+        }
+      </button>
+    </form>
+
+    <div class="footer-section">
+      <span>Pas encore de compte ?</span>
+      <a routerLink="/signup" class="signup-link">S'inscrire</a>
+    </div>
+  </div>
+
+  <div class="auth-background">
+    <div class="gradient-overlay"></div>
+    <div class="hero-content">
+      <h2>Livraison rapide à votre porte</h2>
+      <p>Commandez des repas, courses, pharmacies et plus encore en quelques clics</p>
+    </div>
+  </div>
+</div>
