@@ -15,11 +15,11 @@
       </nav>
 
       <div class="auth-buttons">
-        <button mat-stroked-button (click)="goToSignin()" class="signin-btn">
+        <button mat-stroked-button routerLink="/login" class="signin-btn">
           <mat-icon>login</mat-icon>
           <span>Connexion</span>
         </button>
-        <button mat-raised-button (click)="goToSignup()" class="signup-btn">
+        <button mat-raised-button routerLink="/register" class="signup-btn">
           <mat-icon>person_add</mat-icon>
           <span>Inscription</span>
         </button>

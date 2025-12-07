@@ -1,0 +1,107 @@
+<div class="ld-grid">
+	<aside class="ld-sidebar">
+		<div class="ld-profile">
+			<div class="avatar">{{ driverProfile?.nom_complet ? (driverProfile.nom_complet.charAt(0) || 'D') : 'D' }}</div>
+			<div class="meta">
+				<div class="name">{{ driverProfile?.nom_complet || 'Livreur' }}</div>
+				<div class="role">{{ driverProfile?.role || 'livreur' }}</div>
+			</div>
+		</div>
+
+		<div class="status-controls">
+			<label>Status:</label>
+			<div class="status-buttons">
+				<button (click)="toggleStatus('available')" [class.active]="status==='available'">Available</button>
+				<button (click)="toggleStatus('busy')" [class.active]="status==='busy'">Busy</button>
+				<button (click)="toggleStatus('offline')" [class.active]="status==='offline'">Offline</button>
+			</div>
+		</div>
+
+		<section class="ld-card earnings">
+			<h4>Earnings</h4>
+			<div class="amount">{{ formatCurrency(earnings.today) }}</div>
+			<div class="small">Week: {{ formatCurrency(earnings.week) }} • Month: {{ formatCurrency(earnings.month) }}</div>
+			<div class="tips">Tips today: {{ formatCurrency(earnings.tipsToday || 0) }}</div>
+		</section>
+
+		<section class="ld-card notifications">
+			<h4>Notifications</h4>
+			<ul>
+				<li *ngFor="let n of notifications">{{ n.message }} <small>{{ n.timestamp | slice:0:16 }}</small></li>
+			</ul>
+		</section>
+
+		<section class="ld-card stats">
+			<h4>Performance</h4>
+			<div>Completed: {{ stats.completed }}</div>
+			<div>Avg time: {{ stats.avgDeliveryTimeMinutes }}m</div>
+			<div>Cancel rate: {{ stats.cancellations }}</div>
+			<div>Satisfaction: {{ stats.satisfaction }}%</div>
+		</section>
+	</aside>
+
+	<main class="ld-main">
+		<header class="ld-header">
+			<h2>Deliveries</h2>
+			<div class="actions">
+				<button (click)="loadAll()">Refresh</button>
+			</div>
+		</header>
+
+		<section class="ld-content">
+			<div class="left-col">
+				<div class="ld-card ongoing">
+					<h3>Ongoing Deliveries</h3>
+					<div *ngIf="ongoing.length === 0">Aucune livraison en cours</div>
+					<div *ngFor="let d of ongoing" class="delivery">
+						<div class="row">
+							<div class="info">
+								<div class="id">{{ d.numero_suivi || d.id }}</div>
+								<div class="items">{{ d.items?.join(', ') }}</div>
+								<div class="addresses">Pickup: {{ d.pickup_address }} → Dropoff: {{ d.dropoff_address }}</div>
+								<div class="meta">ETA: {{ d.eta_minutes }}m • {{ d.remaining_km }} km</div>
+							</div>
+							<div class="controls">
+                                <button (click)="navigateTo(d.dropoff_address || '')">Navigate</button>
+								<button (click)="markDelivered(d)">Mark Delivered</button>
+							</div>
+						</div>
+						<div class="instructions" *ngIf="d.instructions">Instructions: {{ d.instructions }}</div>
+					</div>
+				</div>
+
+				<div class="ld-card upcoming">
+					<h3>Upcoming Tasks</h3>
+					<div *ngIf="upcoming.length === 0">No upcoming tasks</div>
+					<div *ngFor="let u of upcoming" class="delivery small">
+						<div class="left">
+							<div class="id">{{ u.numero_suivi || u.id }}</div>
+							<div class="addresses">{{ u.pickup_address }} → {{ u.dropoff_address }}</div>
+						</div>
+						<div class="right">
+							<div class="meta">ETA: {{ u.eta_minutes }}m</div>
+							<button (click)="acceptMission(u)">Accept</button>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="right-col">
+				<div class="ld-card map">
+					<h3>Map</h3>
+					<div class="map-placeholder">Map placeholder — integrate Mapbox / Google Maps here</div>
+					<div class="map-stats">Driver: {{ driverLat.toFixed(4) }}, {{ driverLng.toFixed(4) }}</div>
+				</div>
+
+				<div class="ld-card support">
+					<h3>Support & Safety</h3>
+					<button (click)="reportIncident(selectedDelivery?.id || '', 'Need help')">Report Incident</button>
+					<div class="quick-links">
+						<a href="tel:+33123456789">Call Support</a>
+						<a href="#">Quick FAQ</a>
+					</div>
+				</div>
+			</div>
+		</section>
+	</main>
+</div>

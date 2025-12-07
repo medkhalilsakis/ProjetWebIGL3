@@ -1,0 +1,475 @@
+<!-- Advanced Customer Dashboard -->
+<div class="dashboard-wrapper">
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loader-container">
+    <div class="spinner">Loading your dashboard...</div>
+  </div>
+
+  <div *ngIf="!loading" class="dashboard-content">
+    <!-- Header with Tabs -->
+    <div class="dashboard-header">
+      <div class="header-top">
+        <h1>🚀 Welcome {{ currentUser?.nom_complet }}!</h1>
+        <button class="logout-btn" (click)="logout()" title="Logout">🚪 Logout</button>
+      </div>
+      <div class="tab-navigation">
+        <button [class.active]="activeTab === 'home'" (click)="switchTab('home')">🏠 Home</button>
+        <button [class.active]="activeTab === 'tracking'" (click)="switchTab('tracking')">📍 Tracking</button>
+        <button [class.active]="activeTab === 'history'" (click)="switchTab('history')">📋 History</button>
+        <button [class.active]="activeTab === 'loyalty'" (click)="switchTab('loyalty')">⭐ Loyalty</button>
+        <button [class.active]="activeTab === 'payments'" (click)="switchTab('payments')">💳 Payments</button>
+      </div>
+    </div>
+
+    <!-- HOME TAB -->
+    <div *ngIf="activeTab === 'home'" class="tab-content">
+      <!-- Quick Stats -->
+      <div class="quick-stats">
+        <div class="stat-box">
+          <span class="icon">🎯</span>
+          <span class="value">{{ stats.montant_economise }} DH</span>
+          <span class="label">Saved</span>
+        </div>
+        <div class="stat-box">
+          <span class="icon">⏱️</span>
+          <span class="value">{{ stats.temps_economise }}h</span>
+          <span class="label">Time Saved</span>
+        </div>
+        <div class="stat-box">
+          <span class="icon">📦</span>
+          <span class="value">{{ stats.total_commandes }}</span>
+          <span class="label">Orders</span>
+        </div>
+        <div class="stat-box">
+          <span class="icon">🌱</span>
+          <span class="value">{{ trackingStats.co2Saved }} kg</span>
+          <span class="label">CO₂ Saved</span>
+        </div>
+      </div>
+
+      <!-- Smart Recommendations -->
+      <div class="section">
+        <h2>🎁 Personalized Recommendations</h2>
+        <div class="recommendations">
+          <div *ngFor="let rec of recommendations" class="rec-card">
+            <span class="emoji">{{ rec.emoji }}</span>
+            <p>{{ rec.text }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Orders -->
+      <div class="section">
+        <h2>📍 Active Orders</h2>
+        <div *ngIf="activeOrder" class="active-order">
+          <div class="driver-info">
+            <h3>{{ activeOrder.driver.nom }}</h3>
+            <p>📊 {{ activeOrder.driver.stats.ordersDelivered }} deliveries • {{ activeOrder.driver.stats.satisfaction }}% satisfaction</p>
+            <p>{{ getTrafficEmoji(activeOrder.trafficCondition) }} Traffic: {{ activeOrder.trafficCondition }}</p>
+          </div>
+          <div class="eta">Arriving at {{ activeOrder.estimatedArrival | date:'HH:mm' }}</div>
+        </div>
+        <div *ngIf="!activeOrder" class="empty">No active orders</div>
+      </div>
+
+      <!-- Recent Orders -->
+      <div class="section">
+        <h2>📦 Recent Orders</h2>
+        <div *ngIf="recentCommandes.length > 0" class="orders-list">
+          <div *ngFor="let order of recentCommandes" class="order-card">
+            <div class="order-number">#{{ order.numero_suivi }}</div>
+            <div class="order-info">
+              <p class="restaurant">{{ order.fournisseur_nom }}</p>
+              <p class="amount">{{ order.montant_total }} DH</p>
+            </div>
+            <span [class]="'status ' + getStatusBadgeClass(order.statut)">{{ getStatusLabel(order.statut) }}</span>
+          </div>
+        </div>
+        <div *ngIf="recentCommandes.length === 0" class="empty">No recent orders</div>
+      </div>
+
+      <!-- Favorites -->
+      <div class="section">
+        <h2>❤️ Favorite Restaurants</h2>
+        <div class="favorites-grid">
+          <div *ngFor="let fav of fournisseursFavoris" class="fav-card">
+            <img [src]="fav.photo_couverture" [alt]="fav.nom_entreprise" class="fav-image">
+            <h4>{{ fav.nom_entreprise }}</h4>
+            <p>⭐ {{ fav.note_moyenne }} • {{ fav.temps_preparation_moyen }}min</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRACKING TAB -->
+    <div *ngIf="activeTab === 'tracking'" class="tab-content">
+      <h2>📍 Real-time Tracking</h2>
+      <div *ngIf="activeOrder" class="tracking-card">
+        <p>Driver location: {{ activeOrder.latitude | number:'1.5-5' }}, {{ activeOrder.longitude | number:'1.5-5' }}</p>
+        <p>Progress: {{ activeOrder.progress | number:'1.0-0' }}%</p>
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width]="activeOrder.progress + '%'"></div>
+        </div>
+      </div>
+      <div *ngIf="!activeOrder" class="empty">No active order to track</div>
+    </div>
+
+    <!-- HISTORY TAB -->
+    <div *ngIf="activeTab === 'history'" class="tab-content">
+      <h2>📋 Order History</h2>
+      <div class="filters">
+        <input type="text" placeholder="Search orders...">
+        <select>
+          <option>All Types</option>
+          <option>Restaurants</option>
+          <option>Groceries</option>
+        </select>
+      </div>
+      <div *ngIf="recentCommandes.length > 0" class="history-table">
+        <div class="table-header">
+          <div>Order</div>
+          <div>Restaurant</div>
+          <div>Amount</div>
+          <div>Status</div>
+        </div>
+        <div *ngFor="let order of recentCommandes" class="table-row">
+          <div>#{{ order.numero_suivi }}</div>
+          <div>{{ order.fournisseur_nom }}</div>
+          <div>{{ order.montant_total }} DH</div>
+          <div [class]="getStatusBadgeClass(order.statut)">{{ getStatusLabel(order.statut) }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOYALTY TAB -->
+    <div *ngIf="activeTab === 'loyalty'" class="tab-content">
+      <h2>⭐ Loyalty Program</h2>
+      
+      <!-- Level -->
+      <div class="loyalty-card">
+        <div class="level">
+          <span class="icon">{{ loyaltyLevel.icon }}</span>
+          <span class="name">{{ loyaltyLevel.level }} Level</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width]="loyaltyLevel.progress + '%'"></div>
+        </div>
+        <p class="text">{{ loyaltyLevel.progress }}% to {{ loyaltyLevel.nextLevel }}</p>
+      </div>
+
+      <!-- Badges -->
+      <div class="badges-section">
+        <h3>🏆 Badges</h3>
+        <div class="badges">
+          <div *ngFor="let badge of badges" class="badge" [class.locked]="!badge.achieved">
+            <span class="badge-icon">{{ badge.icon }}</span>
+            <p>{{ badge.name }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rewards Wheel -->
+      <div class="rewards-section">
+        <h3>🎡 Spin the Wheel!</h3>
+        <button class="spin-btn" (click)="spinRewardsWheel()">🎰 SPIN NOW</button>
+      </div>
+    </div>
+
+    <!-- PAYMENTS TAB -->
+    <div *ngIf="activeTab === 'payments'" class="tab-content">
+      <h2>💳 Payment Management</h2>
+      
+      <!-- Wallet -->
+      <div class="wallet-card">
+        <h3>💰 Virtual Wallet</h3>
+        <p class="balance">Balance: 500 DH</p>
+        <div class="actions">
+          <button>Recharge</button>
+          <button>History</button>
+        </div>
+      </div>
+
+      <!-- Spending -->
+      <div class="spending-card">
+        <h3>📊 Monthly Spending</h3>
+        <p class="amount">{{ getMonthlySpending() }} DH</p>
+        <p class="avg">Avg per order: {{ (getMonthlySpending() / stats.total_commandes) | number:'1.0-0' }} DH</p>
+      </div>
+
+      <!-- Payment Methods -->
+      <div class="methods-card">
+        <h3>💳 Payment Methods</h3>
+        <div class="method">
+          <span>💳 Card •••• 4242</span>
+          <span class="default">Default</span>
+        </div>
+        <div class="method">
+          <span>📱 Mobile Money</span>
+        </div>
+      </div>
+
+      <!-- Options -->
+      <div class="payment-options">
+        <button (click)="toggleSplitPayment()">➗ Split Payment</button>
+        <button>⏰ Pay Later</button>
+        <button>📅 Loyalty Subscription</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Environmental Sidebar -->
+  <div class="eco-sidebar">
+    <h3>🌱 Environmental Impact</h3>
+    <p>Distance saved: {{ trackingStats.distanceTraveled }} km</p>
+    <p>CO₂ avoided: {{ calculateCO2Saved() }} kg</p>
+    <button (click)="offsetCO2Emissions()">Offset Emissions</button>
+  </div>
+</div>
+<div class="dashboard-container">
+  <div class="dashboard-header">
+    <div class="header-content">
+      <h1>Bonjour, {{ currentUser?.nom_complet }} ! 👋</h1>
+      <p>Bienvenue sur votre tableau de bord</p>
+    </div>
+    <button class="btn btn-primary">
+      <i class="icon-plus"></i>
+      Nouvelle commande
+    </button>
+  </div>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loader-container">
+    <div class="loader"></div>
+  </div>
+
+  <!-- Dashboard Content -->
+  <div *ngIf="!loading">
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+      <div class="stat-card stat-primary">
+        <div class="stat-icon">
+          <i class="icon-shopping-cart"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ stats.total_commandes }}</div>
+          <div class="stat-label">Total Commandes</div>
+        </div>
+        <div class="stat-trend">
+          <i class="icon-trending-up"></i>
+          <span>+12%</span>
+        </div>
+      </div>
+
+      <div class="stat-card stat-warning">
+        <div class="stat-icon">
+          <i class="icon-clock"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ stats.commandes_en_cours }}</div>
+          <div class="stat-label">En cours</div>
+        </div>
+        <div class="stat-trend">
+          <i class="icon-activity"></i>
+          <span>Actif</span>
+        </div>
+      </div>
+
+      <div class="stat-card stat-success">
+        <div class="stat-icon">
+          <i class="icon-check-circle"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ stats.commandes_livrees }}</div>
+          <div class="stat-label">Livrées</div>
+        </div>
+        <div class="stat-trend">
+          <i class="icon-trending-up"></i>
+          <span>+8%</span>
+        </div>
+      </div>
+
+      <div class="stat-card stat-info">
+        <div class="stat-icon">
+          <i class="icon-dollar-sign"></i>
+        </div>
+        <div class="stat-content">
+          <div class="stat-value">{{ stats.montant_total_depense }} DH</div>
+          <div class="stat-label">Total dépensé</div>
+        </div>
+        <div class="stat-trend">
+          <i class="icon-trending-up"></i>
+          <span>+15%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="content-grid">
+      <!-- Recent Orders -->
+      <div class="content-section">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Commandes récentes</h3>
+            <a routerLink="/client/commandes" class="view-all-link">
+              Voir tout <i class="icon-arrow-right"></i>
+            </a>
+          </div>
+          
+          <div class="card-body">
+            <div *ngIf="recentCommandes.length === 0" class="empty-state">
+              <i class="icon-inbox"></i>
+              <p>Aucune commande récente</p>
+              <button class="btn btn-primary">Passer une commande</button>
+            </div>
+
+            <div class="orders-list" *ngIf="recentCommandes.length > 0">
+              <div 
+                *ngFor="let commande of recentCommandes" 
+                class="order-item"
+              >
+                <div class="order-header">
+                  <div class="order-id">
+                    <i class="icon-hash"></i>
+                    {{ commande.numero_suivi }}
+                  </div>
+                  <span [class]="getStatusBadgeClass(commande.statut)">
+                    {{ getStatusLabel(commande.statut) }}
+                  </span>
+                </div>
+
+                <div class="order-details">
+                  <div class="order-info">
+                    <div class="info-row">
+                      <i class="icon-store"></i>
+                      <span>{{ commande.fournisseur_nom }}</span>
+                    </div>
+                    <div class="info-row">
+                      <i class="icon-calendar"></i>
+                      <span>{{ commande.date_commande | date:'short' }}</span>
+                    </div>
+                    <div class="info-row">
+                      <i class="icon-map-pin"></i>
+                      <span>{{ commande.rue }}, {{ commande.ville }}</span>
+                    </div>
+                  </div>
+
+                  <div class="order-amount">
+                    {{ commande.montant_total }} DH
+                  </div>
+                </div>
+
+                <div class="order-actions">
+                  <button 
+                    class="btn btn-sm btn-outline"
+                    (click)="trackCommande(commande.id)"
+                  >
+                    <i class="icon-navigation"></i>
+                    Suivre
+                  </button>
+                  <button class="btn btn-sm btn-outline">
+                    <i class="icon-message-circle"></i>
+                    Contacter
+                  </button>
+                </div>
+
+                <!-- Progress Bar for Active Orders -->
+                <div 
+                  *ngIf="commande.statut !== 'livree' && commande.statut !== 'annulee'" 
+                  class="order-progress"
+                >
+                  <div class="progress-bar">
+                    <div 
+                      class="progress-fill"
+                    ></div>
+                  </div>
+                  <div class="progress-steps">
+                    <div class="step" [class.active]="true">Confirmée</div>
+                    <div class="step" [class.active]="commande.statut !== 'en_attente'">
+                      Préparation
+                    </div>
+                    <div class="step" [class.active]="commande.statut === 'en_livraison' || commande.statut === 'livree'">
+                      En route
+                    </div>
+                    <div class="step" [class.active]="commande.statut === 'livree'">
+                      Livrée
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Favorite Restaurants -->
+      <div class="sidebar-section">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Mes favoris</h3>
+          </div>
+          
+          <div class="card-body">
+            <div *ngIf="fournisseursFavoris.length === 0" class="empty-state small">
+              <i class="icon-heart"></i>
+              <p>Aucun favori</p>
+            </div>
+
+            <div class="favorites-list">
+              <div 
+                *ngFor="let favori of fournisseursFavoris" 
+                class="favorite-item"
+              >
+                <img 
+                  [src]="favori.photo_couverture" 
+                  [alt]="favori.nom_entreprise"
+                  class="favorite-image"
+                >
+                <div class="favorite-info">
+                  <h4>{{ favori.nom_entreprise }}</h4>
+                  <div class="favorite-rating">
+                    <i class="icon-star-filled"></i>
+                    <span>{{ favori.note_moyenne }}</span>
+                    <span class="rating-count">({{ favori.nombre_avis }})</span>
+                  </div>
+                  <div class="favorite-meta">
+                    <span>{{ favori.temps_preparation_moyen }} min</span>
+                    <span>•</span>
+                    <span>{{ favori.frais_livraison }} DH</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Actions rapides</h3>
+          </div>
+          
+          <div class="card-body">
+            <div class="quick-actions">
+              <button class="quick-action-btn">
+                <i class="icon-repeat"></i>
+                <span>Recommander</span>
+              </button>
+              <button class="quick-action-btn">
+                <i class="icon-map"></i>
+                <span>Mes adresses</span>
+              </button>
+              <button class="quick-action-btn">
+                <i class="icon-credit-card"></i>
+                <span>Paiements</span>
+              </button>
+              <button class="quick-action-btn">
+                <i class="icon-gift"></i>
+                <span>Promotions</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

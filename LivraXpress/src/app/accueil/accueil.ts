@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
 
 interface City {
@@ -17,7 +17,7 @@ interface City {
 @Component({
   selector: 'app-accueil',
   standalone: true,
-  imports: [CommonModule, MatButtonModule, MatIconModule],
+  imports: [CommonModule, MatButtonModule, MatIconModule, RouterLink],
   templateUrl: './accueil.html',
   styleUrls: ['./accueil.css'],
 })
@@ -373,11 +373,11 @@ export class Accueil implements AfterViewInit, OnDestroy {
   }
 
   goToSignup(): void {
-    this.router.navigate(['/signup']);
+    this.router.navigate(['/register']);
   }
 
   goToSignin(): void {
-    this.router.navigate(['/signin']);
+    this.router.navigate(['/login']);
   }
 
   viewService(serviceId: string): void {

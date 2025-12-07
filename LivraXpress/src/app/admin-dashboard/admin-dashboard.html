@@ -1,0 +1,236 @@
+<div class="admin-dashboard">
+  <!-- Navigation Tabs -->
+  <div class="admin-nav">
+    <button (click)="switchTab('overview')" [class.active]="activeTab === 'overview'">📊 Overview</button>
+    <button (click)="switchTab('drivers')" [class.active]="activeTab === 'drivers'">🚚 Drivers</button>
+    <button (click)="switchTab('customers')" [class.active]="activeTab === 'customers'">👥 Customers</button>
+    <button (click)="switchTab('deliveries')" [class.active]="activeTab === 'deliveries'">📦 Deliveries</button>
+    <button (click)="switchTab('financials')" [class.active]="activeTab === 'financials'">💸 Financials</button>
+    <button (click)="switchTab('analytics')" [class.active]="activeTab === 'analytics'">📈 Analytics</button>
+    <button (click)="switchTab('config')" [class.active]="activeTab === 'config'">⚙️ Config</button>
+    <button (click)="switchTab('support')" [class.active]="activeTab === 'support'">🎫 Support</button>
+  </div>
+
+  <!-- Overview Tab -->
+  <div class="admin-section" *ngIf="activeTab === 'overview'">
+    <h2>Dashboard Overview</h2>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="label">Ongoing Deliveries</div>
+        <div class="value">{{ ongoingCount }}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Delivered Today</div>
+        <div class="value">{{ deliveredCount }}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Daily Revenue</div>
+        <div class="value">{{ formatCurrency(financial.daily_revenue) }}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Active Drivers</div>
+        <div class="value">{{ (drivers | slice:0:3)?.length }}</div>
+      </div>
+    </div>
+    <div class="notifications-box">
+      <h3>System Alerts</h3>
+      <ul>
+        <li *ngFor="let n of systemNotifications">{{ n.message }}</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Drivers Tab -->
+  <div class="admin-section" *ngIf="activeTab === 'drivers'">
+    <h2>Driver Management</h2>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Rating</th>
+          <th>Completed</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let driver of drivers">
+          <td>{{ driver.nom_complet }}</td>
+          <td>{{ driver.email }}</td>
+          <td><span class="status" [class]="driver.statut">{{ driver.statut }}</span></td>
+          <td>{{ driver.rating || 'N/A' }}</td>
+          <td>{{ driver.deliveries_completed || 0 }}</td>
+          <td>
+            <button *ngIf="driver.statut === 'pending'" (click)="approveDriver(driver)">Approve</button>
+            <button *ngIf="driver.statut === 'active'" (click)="suspendDriver(driver)">Suspend</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Customers Tab -->
+  <div class="admin-section" *ngIf="activeTab === 'customers'">
+    <h2>Customer Management</h2>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Orders</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let customer of customers">
+          <td>{{ customer.nom_complet }}</td>
+          <td>{{ customer.email }}</td>
+          <td><span class="status" [class]="customer.status">{{ customer.status }}</span></td>
+          <td>{{ customer.orders_count || 0 }}</td>
+          <td><button>View</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Deliveries Tab -->
+  <div class="admin-section" *ngIf="activeTab === 'deliveries'">
+    <h2>Real-Time Deliveries</h2>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Tracking</th>
+          <th>Driver</th>
+          <th>Status</th>
+          <th>Amount</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let delivery of deliveries | slice:0:10">
+          <td>{{ delivery.numero_suivi }}</td>
+          <td>{{ delivery.driver_id || 'Unassigned' }}</td>
+          <td><span class="status" [class]="delivery.status">{{ delivery.status }}</span></td>
+          <td>{{ formatCurrency(delivery.montant_total || 0) }}</td>
+          <td>{{ delivery.created_at | slice:0:10 }}</td>
+          <td>
+            <button (click)="cancelDelivery(delivery)">Cancel</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Financials Tab -->
+  <div class="admin-section" *ngIf="activeTab === 'financials'">
+    <h2>Payments & Financials</h2>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="label">Daily Revenue</div>
+        <div class="value">{{ formatCurrency(financial.daily_revenue) }}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Weekly Revenue</div>
+        <div class="value">{{ formatCurrency(financial.weekly_revenue) }}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Total Payouts</div>
+        <div class="value">{{ formatCurrency(financial.total_payouts) }}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Pending Payouts</div>
+        <div class="value">{{ formatCurrency(financial.pending_payouts) }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Analytics Tab -->
+  <div class="admin-section" *ngIf="activeTab === 'analytics'">
+    <h2>Analytics & Reports</h2>
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="label">Deliveries Today</div>
+        <div class="value">{{ analytics.deliveries_today }}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Avg Delivery Time</div>
+        <div class="value">{{ analytics.avg_delivery_time }}m</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Cancellation Rate</div>
+        <div class="value">{{ analytics.cancellation_rate }}%</div>
+      </div>
+      <div class="metric-card">
+        <div class="label">Customer Satisfaction</div>
+        <div class="value">{{ analytics.customer_satisfaction }}%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Configuration Tab -->
+  <div class="admin-section" *ngIf="activeTab === 'config'">
+    <h2>System Configuration</h2>
+    <div class="config-section">
+      <h3>Delivery Pricing</h3>
+      <div class="config-form">
+        <label>Base Fee (€): <input type="number" [(ngModel)]="deliveryPricing.base" step="0.1"></label>
+        <label>Per KM (€): <input type="number" [(ngModel)]="deliveryPricing.per_km" step="0.1"></label>
+        <label>Peak Multiplier: <input type="number" [(ngModel)]="deliveryPricing.peak_multiplier" step="0.1"></label>
+        <button (click)="saveDeliveryPricing()">Save Pricing</button>
+      </div>
+    </div>
+
+    <div class="config-section">
+      <h3>Service Zones</h3>
+      <ul class="zone-list">
+        <li *ngFor="let zone of serviceZones">{{ zone }}</li>
+      </ul>
+      <div class="config-form">
+        <input type="text" [(ngModel)]="newServiceZone" placeholder="Add new zone">
+        <button (click)="addServiceZone()">Add Zone</button>
+      </div>
+    </div>
+
+    <div class="config-section">
+      <h3>Promo Codes</h3>
+      <ul class="promo-list">
+        <li *ngFor="let promo of promoCodes">{{ promo.code }} - {{ promo.discount }}% off</li>
+      </ul>
+      <div class="config-form">
+        <input type="text" [(ngModel)]="newPromoCode" placeholder="Promo code">
+        <input type="number" [(ngModel)]="newPromoDiscount" placeholder="Discount %" min="1" max="100">
+        <button (click)="addPromoCode()">Add Promo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Support Tab -->
+  <div class="admin-section" *ngIf="activeTab === 'support'">
+    <h2>Support Tickets</h2>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Subject</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let ticket of tickets">
+          <td>{{ ticket.subject }}</td>
+          <td><span class="priority" [class]="ticket.priority">{{ ticket.priority }}</span></td>
+          <td><span class="status" [class]="ticket.status">{{ ticket.status }}</span></td>
+          <td>{{ ticket.created_at | slice:0:10 }}</td>
+          <td>
+            <button *ngIf="ticket.status === 'open'" (click)="resolveTicket(ticket)">Resolve</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

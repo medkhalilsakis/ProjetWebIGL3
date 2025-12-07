@@ -1,0 +1,420 @@
+<!-- Advanced Customer Dashboard -->
+<div class="modern-dashboard" [class]="'theme-' + trackingStyle">
+  <!-- Top Navigation Bar -->
+  <div class="dashboard-navbar">
+    <div class="navbar-container">
+      <div class="navbar-brand">
+        <h1>🚀 LivraXpress Dashboard</h1>
+      </div>
+      <div class="navbar-tabs">
+        <button 
+          class="nav-tab" 
+          [class.active]="activeTab === 'home'"
+          (click)="switchTab('home')"
+        >
+          <span class="icon">🏠</span>
+          <span>Home</span>
+        </button>
+        <button 
+          class="nav-tab" 
+          [class.active]="activeTab === 'tracking'"
+          (click)="switchTab('tracking')"
+        >
+          <span class="icon">📍</span>
+          <span>Tracking</span>
+        </button>
+        <button 
+          class="nav-tab" 
+          [class.active]="activeTab === 'history'"
+          (click)="switchTab('history')"
+        >
+          <span class="icon">📋</span>
+          <span>History</span>
+        </button>
+        <button 
+          class="nav-tab" 
+          [class.active]="activeTab === 'loyalty'"
+          (click)="switchTab('loyalty')"
+        >
+          <span class="icon">⭐</span>
+          <span>Loyalty</span>
+        </button>
+        <button 
+          class="nav-tab" 
+          [class.active]="activeTab === 'payments'"
+          (click)="switchTab('payments')"
+        >
+          <span class="icon">💳</span>
+          <span>Payments</span>
+        </button>
+      </div>
+      <div class="navbar-profile">
+        <div class="profile-avatar">{{ currentUser?.nom_complet?.charAt(0) || 'U' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Smart Notifications Banner -->
+  <div class="smart-notifications">
+    <div *ngFor="let notif of notifications" class="notification-toast" [class]="'notif-' + notif.type">
+      <span class="notif-icon">{{ notif.message }}</span>
+    </div>
+  </div>
+
+  <!-- HOME TAB -->
+  <div class="dashboard-content" *ngIf="activeTab === 'home'">
+    <!-- Welcome & Quick Stats -->
+    <div class="welcome-section">
+      <div class="welcome-header">
+        <h2>Bienvenue, {{ currentUser?.nom_complet }}! 👋</h2>
+        <p>Voici votre tableau de bord personnalisé</p>
+      </div>
+
+      <!-- Key Metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card metric-primary">
+          <div class="metric-icon">🎯</div>
+          <div class="metric-content">
+            <span class="metric-value">{{ stats.montant_economise }} DH</span>
+            <span class="metric-label">Économisé</span>
+          </div>
+        </div>
+        <div class="metric-card metric-success">
+          <div class="metric-icon">⏱️</div>
+          <div class="metric-content">
+            <span class="metric-value">{{ stats.temps_economise }}h</span>
+            <span class="metric-label">Temps gagné</span>
+          </div>
+        </div>
+        <div class="metric-card metric-info">
+          <div class="metric-icon">📦</div>
+          <div class="metric-content">
+            <span class="metric-value">{{ stats.total_commandes }}</span>
+            <span class="metric-label">Commandes</span>
+          </div>
+        </div>
+        <div class="metric-card metric-warning">
+          <div class="metric-icon">🌱</div>
+          <div class="metric-content">
+            <span class="metric-value">{{ trackingStats.co2Saved }}kg</span>
+            <span class="metric-label">CO₂ Évité</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Smart Recommendations Section -->
+    <div class="section recommendations-section">
+      <h3>🎁 Recommendations personnalisées</h3>
+      <div class="recommendations-carousel">
+        <div *ngFor="let rec of recommendations" class="recommendation-card">
+          <span class="rec-emoji">{{ rec.emoji }}</span>
+          <p>{{ rec.text }}</p>
+          <button class="btn-secondary">Explorer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Orders with Real-time Tracking -->
+    <div class="section active-orders">
+      <h3>📍 Commandes en cours</h3>
+      <div *ngIf="activeOrder" class="active-order-card">
+        <!-- Driver Info -->
+        <div class="driver-card">
+          <img [src]="activeOrder.driver.avatar" [alt]="activeOrder.driver.nom" class="driver-avatar">
+          <div class="driver-info">
+            <h4>{{ activeOrder.driver.nom }}</h4>
+            <p>📊 {{ activeOrder.driver.stats.ordersDelivered }} livraisons • {{ activeOrder.driver.stats.satisfaction }}% satisfaction</p>
+            <p class="vehicle-type">🚗 {{ activeOrder.driver.stats.vehicle }}</p>
+            <p class="driver-message" *ngIf="activeOrder.driver.message">💬 "{{ activeOrder.driver.message }}"</p>
+          </div>
+        </div>
+
+        <!-- Progress Timeline -->
+        <div class="progress-timeline">
+          <div class="timeline-step" [class.active]="activeOrder.status === 'preparation'">
+            <div class="timeline-marker">👨‍🍳</div>
+            <div class="timeline-label">Préparation</div>
+          </div>
+          <div class="timeline-connector"></div>
+          <div class="timeline-step" [class.active]="activeOrder.status === 'pickup'">
+            <div class="timeline-marker">🏪</div>
+            <div class="timeline-label">Récupération</div>
+          </div>
+          <div class="timeline-connector"></div>
+          <div class="timeline-step" [class.active]="activeOrder.status === 'en_route'">
+            <div class="timeline-marker">🚚</div>
+            <div class="timeline-label">En route</div>
+          </div>
+          <div class="timeline-connector"></div>
+          <div class="timeline-step" [class.active]="activeOrder.status === 'delivered'">
+            <div class="timeline-marker">✅</div>
+            <div class="timeline-label">Livrée</div>
+          </div>
+        </div>
+
+        <!-- ETA & Traffic Info -->
+        <div class="eta-info">
+          <div class="eta-item">
+            <span class="eta-label">Arrivée estimée:</span>
+            <span class="eta-value">{{ activeOrder.estimatedArrival | date:'HH:mm' }}</span>
+          </div>
+          <div class="eta-item">
+            <span class="eta-label">Conditions:</span>
+            <span class="eta-value">{{ getTrafficEmoji(activeOrder.trafficCondition) }} {{ activeOrder.trafficCondition }}</span>
+          </div>
+        </div>
+
+        <!-- Quick Communication -->
+        <div class="quick-messages">
+          <button class="msg-btn" (click)="sendQuickMessage('Sonnez doucement')">🔔 Sonner doucement</button>
+          <button class="msg-btn" (click)="sendQuickMessage('Laisser à la porte')">🚪 Laisser à la porte</button>
+          <button class="msg-btn" (click)="sendQuickMessage('J\'arrive bientôt')">⏳ Arrivée imminente</button>
+          <button class="msg-btn" (click)="shareLocationWithDriver()">📍 Partager localisation</button>
+        </div>
+      </div>
+
+      <div *ngIf="!activeOrder" class="empty-state">
+        <p>Aucune commande en cours</p>
+      </div>
+    </div>
+
+    <!-- Recent Orders -->
+    <div class="section recent-orders">
+      <h3>📦 Commandes récentes</h3>
+      <div class="orders-list">
+        <div *ngFor="let order of recentCommandes" class="order-item">
+          <div class="order-header">
+            <span class="order-number">#{{ order.numero_suivi }}</span>
+            <span [class]="getStatusBadgeClass(order.statut)">{{ getStatusLabel(order.statut) }}</span>
+          </div>
+          <p class="order-restaurant">{{ order.fournisseur_nom }}</p>
+          <p class="order-amount">{{ order.montant_total }} DH</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Favorites -->
+    <div class="section favorites">
+      <h3>❤️ Restaurants favoris</h3>
+      <div class="favorites-grid">
+        <div *ngFor="let fav of fournisseursFavoris" class="favorite-item">
+          <img [src]="fav.photo_couverture" [alt]="fav.nom_entreprise">
+          <div class="fav-info">
+            <h4>{{ fav.nom_entreprise }}</h4>
+            <p class="rating">⭐ {{ fav.note_moyenne }} ({{ fav.nombre_avis }})</p>
+            <p class="meta">{{ fav.temps_preparation_moyen }}min • {{ fav.frais_livraison }}DH</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRACKING TAB -->
+  <div class="dashboard-content" *ngIf="activeTab === 'tracking'">
+    <div class="tracking-section">
+      <h2>📍 Suivi en temps réel</h2>
+      
+      <div *ngIf="activeOrder" class="tracking-map-container">
+        <!-- Map would go here (Leaflet integration) -->
+        <div class="map-placeholder">
+          <p>Carte interactive: {{ activeOrder.latitude }}, {{ activeOrder.longitude }}</p>
+          <div class="map-controls">
+            <button>🔍 Zoomer</button>
+            <button>📍 Ma position</button>
+            <button>🛤️ Itinéraire</button>
+          </div>
+        </div>
+
+        <!-- Driver Details -->
+        <div class="tracking-details">
+          <h3>Informations de livraison</h3>
+          <div class="detail-row">
+            <span>Livreur:</span>
+            <strong>{{ activeOrder.driver.nom }}</strong>
+          </div>
+          <div class="detail-row">
+            <span>Véhicule:</span>
+            <strong>{{ activeOrder.driver.stats.vehicle }}</strong>
+          </div>
+          <div class="detail-row">
+            <span>Arrivée estimée:</span>
+            <strong>{{ activeOrder.estimatedArrival | date:'HH:mm' }}</strong>
+          </div>
+          <div class="detail-row">
+            <span>Condition du trafic:</span>
+            <strong>{{ getTrafficEmoji(activeOrder.trafficCondition) }} {{ activeOrder.trafficCondition }}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="!activeOrder" class="empty-state">
+        <p>Aucune commande à suivre actuellement</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div class="dashboard-content" *ngIf="activeTab === 'history'">
+    <div class="history-section">
+      <h2>📋 Historique des commandes</h2>
+
+      <!-- Filters -->
+      <div class="filters">
+        <input type="text" placeholder="🔍 Rechercher une commande...">
+        <select>
+          <option>Tous les types</option>
+          <option>Restaurants</option>
+          <option>Courses</option>
+          <option>Pharmacie</option>
+        </select>
+        <select>
+          <option>Tous les statuts</option>
+          <option>Livrées</option>
+          <option>En cours</option>
+          <option>Annulées</option>
+        </select>
+      </div>
+
+      <!-- Orders Table -->
+      <div class="orders-table">
+        <div class="table-header">
+          <div>Commande</div>
+          <div>Restaurant</div>
+          <div>Montant</div>
+          <div>Date</div>
+          <div>Statut</div>
+        </div>
+        <div *ngFor="let order of recentCommandes" class="table-row">
+          <div>#{{ order.numero_suivi }}</div>
+          <div>{{ order.fournisseur_nom }}</div>
+          <div>{{ order.montant_total }} DH</div>
+          <div>{{ order.date_commande | date:'short' }}</div>
+          <div [class]="getStatusBadgeClass(order.statut)">{{ getStatusLabel(order.statut) }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOYALTY TAB -->
+  <div class="dashboard-content" *ngIf="activeTab === 'loyalty'">
+    <div class="loyalty-section">
+      <h2>⭐ Programme de fidélité</h2>
+
+      <!-- Level Progress -->
+      <div class="loyalty-level-card">
+        <div class="level-display">
+          <div class="level-icon">{{ loyaltyLevel.icon }}</div>
+          <div class="level-info">
+            <h3>{{ loyaltyLevel.level }} Level</h3>
+            <p>Prochain niveau: {{ loyaltyLevel.nextLevel }}</p>
+          </div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width]="loyaltyLevel.progress + '%'"></div>
+        </div>
+        <p class="progress-text">{{ loyaltyLevel.progress }}% de progression</p>
+      </div>
+
+      <!-- Badges -->
+      <div class="badges-section">
+        <h3>🏆 Badges débloqués</h3>
+        <div class="badges-grid">
+          <div *ngFor="let badge of badges" class="badge-item" [class.locked]="!badge.achieved">
+            <span class="badge-icon">{{ badge.icon }}</span>
+            <p>{{ badge.name }}</p>
+            <p class="badge-status">{{ badge.achieved ? 'Débloqué' : 'Verrouillé' }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rewards Wheel -->
+      <div class="rewards-wheel-section">
+        <h3>🎡 Roue des récompenses</h3>
+        <p>Vous avez {{ stats.total_commandes }} commandes - vous pouvez tourner la roue!</p>
+        <button class="spin-button" (click)="spinRewardsWheel()">🎰 TOURNER LA ROUE!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAYMENTS TAB -->
+  <div class="dashboard-content" *ngIf="activeTab === 'payments'">
+    <div class="payments-section">
+      <h2>💳 Gestion des paiements</h2>
+
+      <!-- Virtual Wallet -->
+      <div class="wallet-card">
+        <div class="wallet-header">
+          <h3>💰 Portefeuille virtuel</h3>
+          <span class="balance">Solde: 500 DH</span>
+        </div>
+        <div class="wallet-actions">
+          <button class="btn-primary">Recharger</button>
+          <button class="btn-secondary">Historique</button>
+        </div>
+      </div>
+
+      <!-- Monthly Spending Tracker -->
+      <div class="spending-card">
+        <h3>📊 Dépenses mensuelles</h3>
+        <div class="spending-stats">
+          <div class="stat">
+            <span class="stat-label">Décembre 2024</span>
+            <span class="stat-value">{{ getMonthlySpending() }} DH</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Moyenne/commande</span>
+            <span class="stat-value">{{ (getMonthlySpending() / stats.total_commandes) | number:'1.0-0' }} DH</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment Methods -->
+      <div class="payment-methods">
+        <h3>💳 Méthodes de paiement</h3>
+        <div class="method-list">
+          <div class="method-item">
+            <span class="method-icon">💳</span>
+            <span class="method-name">Carte bancaire - **** 4242</span>
+            <span class="method-default">Défaut</span>
+          </div>
+          <div class="method-item">
+            <span class="method-icon">📱</span>
+            <span class="method-name">Mobile Money</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Split Payment & Pay Later -->
+      <div class="payment-options">
+        <button class="option-btn" (click)="toggleSplitPayment()">
+          <span>➗</span>
+          <span>Paiement fractionné</span>
+        </button>
+        <button class="option-btn">
+          <span>⏰</span>
+          <span>Payer plus tard</span>
+        </button>
+        <button class="option-btn">
+          <span>📅</span>
+          <span>Abonnement fidélité</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Environmental Impact Indicator (Sidebar) -->
+  <div class="environmental-sidebar">
+    <h4>🌱 Impact environnemental</h4>
+    <div class="eco-stat">
+      <span>Distance économisée:</span>
+      <strong>{{ trackingStats.distanceTraveled }} km</strong>
+    </div>
+    <div class="eco-stat">
+      <span>CO₂ évité:</span>
+      <strong>{{ calculateCO2Saved() }} kg</strong>
+    </div>
+    <button class="eco-button" (click)="offsetCO2Emissions()">Compenser les émissions</button>
+    <p class="eco-badge">Recommandations éco-responsables disponibles ♻️</p>
+  </div>
+</div>
