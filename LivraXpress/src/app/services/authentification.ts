@@ -136,6 +136,10 @@ export class AuthService {
     return this.http.post<any>(`${this.apiUrl}/register`, userData);
   }
 
+  registerWithFiles(formData: FormData): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/register`, formData);
+  }
+
   logout(): void {
     const token = this.currentToken;
     if (token) {

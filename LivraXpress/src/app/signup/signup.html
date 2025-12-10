@@ -340,11 +340,63 @@
             </div>
           </div>
 
+          <div class="form-group full-width">
+            <label for="permis_file">
+              <i class="icon-file"></i>
+              Copie du permis de conduire (PDF) <span class="required">*</span>
+            </label>
+            <div class="file-upload-wrapper">
+              <input
+                type="file"
+                id="permis_file"
+                accept="application/pdf"
+                (change)="onPermisFileSelected($event)"
+                class="file-input"
+                [class.is-invalid]="submitted && f['permis_file'].errors"
+              >
+              <label for="permis_file" class="file-label">
+                <i class="icon-upload"></i>
+                <span *ngIf="!permisFile">Choisir un fichier PDF</span>
+                <span *ngIf="permisFile" class="file-name">{{ permisFile.name }}</span>
+              </label>
+            </div>
+            <div *ngIf="submitted && f['permis_file'].errors" class="invalid-feedback">
+              <span *ngIf="f['permis_file'].errors['required']">Le permis de conduire (PDF) est requis</span>
+            </div>
+            <small class="form-hint">Format PDF uniquement, taille max: 5MB</small>
+          </div>
+
+          <div class="form-group full-width">
+            <label for="carte_identite_file">
+              <i class="icon-file"></i>
+              Copie de la carte d'identité (PDF) <span class="required">*</span>
+            </label>
+            <div class="file-upload-wrapper">
+              <input
+                type="file"
+                id="carte_identite_file"
+                accept="application/pdf"
+                (change)="onCarteIdentiteFileSelected($event)"
+                class="file-input"
+                [class.is-invalid]="submitted && f['carte_identite_file'].errors"
+              >
+              <label for="carte_identite_file" class="file-label">
+                <i class="icon-upload"></i>
+                <span *ngIf="!carteIdentiteFile">Choisir un fichier PDF</span>
+                <span *ngIf="carteIdentiteFile" class="file-name">{{ carteIdentiteFile.name }}</span>
+              </label>
+            </div>
+            <div *ngIf="submitted && f['carte_identite_file'].errors" class="invalid-feedback">
+              <span *ngIf="f['carte_identite_file'].errors['required']">La carte d'identité (PDF) est requise</span>
+            </div>
+            <small class="form-hint">Format PDF uniquement, taille max: 5MB</small>
+          </div>
+
           <div class="info-message full-width">
             <i class="icon-info"></i>
             <div>
               <h4>Vérification requise</h4>
-              <p>Votre permis de conduire sera vérifié avant l'activation de votre compte.</p>
+              <p>Vos documents (permis de conduire et carte d'identité) seront vérifiés avant l'activation de votre compte. Vous recevrez une notification une fois votre compte approuvé.</p>
             </div>
           </div>
         </div>

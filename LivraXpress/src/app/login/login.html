@@ -71,6 +71,20 @@
         </div>
       </div>
 
+      <!-- Permit Not Verified Warning -->
+      <div *ngIf="permitNotVerified" class="alert alert-warning" role="alert">
+        <div class="alert-icon">
+          <i class="icon-alert-circle"></i>
+        </div>
+        <div class="alert-content">
+          <strong>Permis non vérifié</strong>
+          <p>{{ permitMessage }}</p>
+          <p class="alert-details">
+            Veuillez compléter votre profil livreur avec vos documents (permis de conduire, assurance, etc.) et attendre la validation de l'administration avant de pouvoir accéder au dashboard.
+          </p>
+        </div>
+      </div>
+
       <div class="form-options">
         <label class="checkbox-label">
           <input type="checkbox" formControlName="rememberMe" aria-label="Se souvenir de moi">

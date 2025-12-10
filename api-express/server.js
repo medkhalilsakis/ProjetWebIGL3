@@ -1,6 +1,4 @@
 require('dotenv').config();
-
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -10,6 +8,7 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
 
 // Middleware globaux
 app.use(helmet({
@@ -85,6 +84,7 @@ app.use((err, req, res, next) => {
     message: err.message || 'Erreur serveur'
   });
 });
+
 
 // Lancement du serveur
 app.listen(PORT, () => {

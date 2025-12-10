@@ -1,401 +1,592 @@
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
-import { interval, Subscription } from 'rxjs';
+import { Router, RouterLink } from '@angular/router';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { AuthService } from '../services/authentification';
 import { ToastService } from '../services/toast';
+import { interval, Subscription } from 'rxjs';
 
-interface AdminUser {
-  id: string;
-  email: string;
-  nom_complet: string;
-  role: string;
+// Interfaces
+interface DashboardStats {
+  totalLivreurs: number;
+  livreursEnAttente: number;
+  livreursActifs: number;
+  livreursSuspendus: number;
+  commandesEnCours: number;
+  revenusTotaux: number;
+  totalFournisseurs: number;
+  totalClients: number;
+  statsJour: PerformanceStats;
+  statsSemaine: PerformanceStats;
+  statsMois: PerformanceStats;
 }
 
-interface Driver {
+interface PerformanceStats {
+  commandes: number;
+  revenus: number;
+  livreursActifs: number;
+  tauxLivraison: number;
+}
+
+interface Livreur {
   id: string;
   nom_complet: string;
   email: string;
-  statut: 'pending' | 'active' | 'suspended' | 'rejected';
-  rating?: number;
-  deliveries_completed?: number;
-  documents_status?: string;
+  telephone?: string;
+  statut: string;
+  type_vehicule?: string;
+  numero_permis?: string;
+  note_moyenne?: number;
+  nombre_livraisons?: number;
+  date_creation: string;
+  verifie?: boolean;
 }
 
-interface Customer {
+interface Fournisseur {
   id: string;
   nom_complet: string;
   email: string;
-  status: 'active' | 'inactive' | 'suspended' | 'fraudulent';
-  orders_count?: number;
+  nom_entreprise: string;
+  type_fournisseur: string;
+  statut: string;
+  date_creation: string;
 }
 
-interface Delivery {
+interface Client {
+  id: string;
+  nom_complet: string;
+  email: string;
+  telephone?: string;
+  statut: string;
+  date_creation: string;
+}
+
+interface Commande {
   id: string;
   numero_suivi: string;
-  driver_id?: string;
-  customer_id?: string;
-  status: 'pending' | 'ongoing' | 'delivered' | 'cancelled';
-  montant_total?: number;
-  created_at?: string;
+  montant_total: number;
+  statut: string;
+  fournisseur?: string;
+  client_nom?: string;
+  date_commande: string;
+  livreur_id?: string;
 }
 
-interface FinancialData {
-  daily_revenue: number;
-  weekly_revenue: number;
-  total_payouts: number;
-  pending_payouts: number;
-}
-
-interface AnalyticsData {
-  deliveries_today: number;
-  avg_delivery_time: number;
-  cancellation_rate: number;
-  customer_satisfaction: number;
-}
-
-interface SystemNotification {
+interface Paiement {
   id: string;
-  title: string;
-  message: string;
-  severity: 'info' | 'warning' | 'critical';
-  timestamp: string;
+  commande_id: string;
+  montant: number;
+  mode_paiement: string;
+  statut: string;
+  date_creation: string;
 }
 
 interface SupportTicket {
   id: string;
-  subject: string;
-  status: 'open' | 'in_progress' | 'resolved';
-  priority: 'low' | 'medium' | 'high';
-  created_at: string;
+  utilisateur_id: string;
+  sujet: string;
+  message: string;
+  statut: string;
+  priorite: string;
+  date_creation: string;
+}
+
+interface Notification {
+  id: string;
+  titre: string;
+  message: string;
+  type: string;
+  lu: boolean;
+  date_creation: string;
 }
 
 @Component({
   selector: 'app-admin-dashboard',
-  standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterLink],
   templateUrl: './admin-dashboard.html',
-  styleUrls: ['./admin-dashboard.css'],
-  changeDetection: ChangeDetectionStrategy.OnPush
+  styleUrl: './admin-dashboard.css'
 })
-export class AdminDashboard implements OnInit, OnDestroy {
-  public apiUrl = 'http://localhost:3000/api';
+export class AdminDashboardComponent implements OnInit, OnDestroy {
+  apiUrl = 'http://localhost:3000/api/admin';
+  
+  // Vue d'ensemble
+  stats: DashboardStats = {
+    totalLivreurs: 0,
+    livreursEnAttente: 0,
+    livreursActifs: 0,
+    livreursSuspendus: 0,
+    commandesEnCours: 0,
+    revenusTotaux: 0,
+    totalFournisseurs: 0,
+    totalClients: 0,
+    statsJour: { commandes: 0, revenus: 0, livreursActifs: 0, tauxLivraison: 0 },
+    statsSemaine: { commandes: 0, revenus: 0, livreursActifs: 0, tauxLivraison: 0 },
+    statsMois: { commandes: 0, revenus: 0, livreursActifs: 0, tauxLivraison: 0 }
+  };
 
-  // Active tab
+  // Onglets actifs
   activeTab: string = 'overview';
+  statsPeriod: 'jour' | 'semaine' | 'mois' = 'jour';
 
-  // Users
-  drivers: Driver[] = [];
-  customers: Customer[] = [];
-  adminUsers: AdminUser[] = [];
+  // Gestion des livreurs
+  livreurs: Livreur[] = [];
+  livreursFilter: 'all' | 'pending' | 'active' | 'suspended' = 'all';
+  selectedLivreur: Livreur | null = null;
+  showLivreurModal = false;
 
-  // Deliveries
-  deliveries: Delivery[] = [];
-  ongoingCount = 0;
-  deliveredCount = 0;
+  // Gestion des fournisseurs
+  fournisseurs: Fournisseur[] = [];
+  fournisseursFilter: 'all' | 'active' | 'suspended' = 'all';
+  selectedFournisseur: Fournisseur | null = null;
+  showFournisseurModal = false;
 
-  // Financials
-  financial: FinancialData = { daily_revenue: 0, weekly_revenue: 0, total_payouts: 0, pending_payouts: 0 };
+  // Gestion des clients
+  clients: Client[] = [];
+  clientsFilter: 'all' | 'active' | 'suspended' = 'all';
+  selectedClient: Client | null = null;
+  showClientModal = false;
 
-  // Analytics
-  analytics: AnalyticsData = { deliveries_today: 0, avg_delivery_time: 0, cancellation_rate: 0, customer_satisfaction: 0 };
+  // Gestion des commandes
+  commandes: Commande[] = [];
+  commandesFilter: 'all' | 'en_cours' | 'livree' | 'annulee' = 'all';
+  selectedCommande: Commande | null = null;
+  showCommandeModal = false;
+
+  // Gestion des paiements
+  paiements: Paiement[] = [];
+  paiementsFilter: 'all' | 'paye' | 'en_attente' | 'refuse' = 'all';
+  revenusTotal = 0;
+  revenusMois = 0;
+  revenusSemaine = 0;
+  revenusJour = 0;
+
+  // Centre de support
+  tickets: SupportTicket[] = [];
+  ticketsFilter: 'all' | 'ouvert' | 'en_cours' | 'resolu' = 'all';
+  selectedTicket: SupportTicket | null = null;
+  showTicketModal = false;
 
   // Notifications
-  systemNotifications: SystemNotification[] = [];
+  notifications: Notification[] = [];
+  unreadCount = 0;
 
-  // Support
-  tickets: SupportTicket[] = [];
+  // Rapports
+  reportType: 'commandes' | 'revenus' | 'utilisateurs' | 'livreurs' = 'commandes';
+  reportPeriod: 'jour' | 'semaine' | 'mois' | 'annee' = 'mois';
 
-  // Config
-  deliveryPricing = { base: 2.5, per_km: 0.5, peak_multiplier: 1.5 };
-  serviceZones: string[] = ['Lyon', 'Paris', 'Marseille'];
-  promoCodes: { code: string; discount: number }[] = [];
-
-  // UI
-  loading = true;
-  selectedDriver: Driver | null = null;
-  selectedCustomer: Customer | null = null;
-  selectedDelivery: Delivery | null = null;
-
-  // Forms
-  newPromoCode = '';
-  newPromoDiscount = 0;
-  newServiceZone = '';
-
-  private updateSub: Subscription | null = null;
+  // États de chargement
+  loading = false;
+  refreshInterval?: Subscription;
 
   constructor(
     private http: HttpClient,
-    private authService: AuthService,
+    private auth: AuthService,
     private toast: ToastService,
-    private cdr: ChangeDetectorRef
+    private router: Router
   ) {}
 
-  // Helper to include auth headers (fallback)
-  private getAuthOptions() {
-    return this.authService?.getAuthHeaders() || {};
-  }
-
   ngOnInit(): void {
-    this.loadAll();
-    this.updateSub = interval(30000).subscribe(() => this.loadDelta());
+    this.loadDashboardData();
+    // Rafraîchir les données toutes les 30 secondes
+    this.refreshInterval = interval(30000).subscribe(() => {
+      this.loadDashboardData();
+    });
   }
 
   ngOnDestroy(): void {
-    if (this.updateSub) this.updateSub.unsubscribe();
+    if (this.refreshInterval) {
+      this.refreshInterval.unsubscribe();
+    }
   }
 
-  // ---------- Loading ----------
-  loadAll(): void {
-    this.loading = true;
-    this.loadDrivers();
-    this.loadCustomers();
-    this.loadDeliveries();
-    this.loadFinancials();
-    this.loadAnalytics();
-    this.loadNotifications();
+  loadDashboardData(): void {
+    this.loadStats();
+    this.loadLivreurs();
+    this.loadFournisseurs();
+    this.loadClients();
+    this.loadCommandes();
+    this.loadPaiements();
     this.loadTickets();
-    this.loading = false;
-    this.cdr.markForCheck();
-  }
-
-  loadDelta(): void {
-    this.loadDeliveries();
-    this.loadFinancials();
     this.loadNotifications();
-    this.cdr.markForCheck();
   }
 
-  private loadDrivers(): void {
-    this.http.get<any>(`${this.apiUrl}/admin/drivers`, this.getAuthOptions()).subscribe({
-      next: res => {
-        if (res?.success && Array.isArray(res.data)) this.drivers = res.data;
-        this.cdr.markForCheck();
-      },
-      error: () => {
-        this.drivers = this.mockDrivers();
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  private loadCustomers(): void {
-    this.http.get<any>(`${this.apiUrl}/admin/customers`, this.getAuthOptions()).subscribe({
-      next: res => {
-        if (res?.success && Array.isArray(res.data)) this.customers = res.data;
-        this.cdr.markForCheck();
-      },
-      error: () => {
-        this.customers = this.mockCustomers();
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  private loadDeliveries(): void {
-    this.http.get<any>(`${this.apiUrl}/admin/deliveries`, this.getAuthOptions()).subscribe({
-      next: res => {
-        if (res?.success && Array.isArray(res.data)) {
-          this.deliveries = res.data;
-          this.ongoingCount = res.data.filter((d: any) => d.status === 'ongoing').length;
-          this.deliveredCount = res.data.filter((d: any) => d.status === 'delivered').length;
+  // ========== STATISTIQUES ==========
+  loadStats(): void {
+    this.loading = true;
+    const authOptions = this.auth.getAuthHeaders();
+    
+    this.http.get<{ success: boolean; data: any }>(`${this.apiUrl}/statistiques`, authOptions)
+      .subscribe({
+        next: (response) => {
+          if (response.success) {
+            this.stats.totalLivreurs = response.data.totalDeliverers || 0;
+            this.stats.commandesEnCours = response.data.ordersToday || 0;
+            this.stats.revenusTotaux = response.data.revenueToday || 0;
+            this.stats.totalFournisseurs = response.data.totalSuppliers || 0;
+            // Charger les stats détaillées
+            this.loadDetailedStats();
+          }
+          this.loading = false;
+        },
+        error: (err) => {
+          console.error('Error loading stats:', err);
+          this.loading = false;
         }
-        this.cdr.markForCheck();
-      },
-      error: () => {
-        this.deliveries = this.mockDeliveries();
-        this.cdr.markForCheck();
+      });
+  }
+
+  loadDetailedStats(): void {
+    const authOptions = this.auth.getAuthHeaders();
+    // Charger les stats détaillées pour livreurs
+    this.http.get<{ success: boolean; data: Livreur[] }>(
+      `${this.apiUrl}/utilisateurs?role=livreur`,
+      authOptions
+    ).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          this.stats.livreursEnAttente = response.data.filter(l => l.statut === 'en_attente').length;
+          this.stats.livreursActifs = response.data.filter(l => l.statut === 'actif').length;
+          this.stats.livreursSuspendus = response.data.filter(l => l.statut === 'suspendu').length;
+        }
+      }
+    });
+
+    // Charger les stats pour clients
+    this.http.get<{ success: boolean; data: Client[] }>(
+      `${this.apiUrl}/utilisateurs?role=client`,
+      authOptions
+    ).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          this.stats.totalClients = response.data.length;
+        }
       }
     });
   }
 
-  private loadFinancials(): void {
-    this.http.get<any>(`${this.apiUrl}/admin/financials`, this.getAuthOptions()).subscribe({
-      next: res => {
-        if (res?.success && res.data) this.financial = res.data;
-        this.cdr.markForCheck();
+  // ========== GESTION DES LIVREURS ==========
+  loadLivreurs(): void {
+    const authOptions = this.auth.getAuthHeaders();
+    let params = new HttpParams().set('role', 'livreur');
+    
+    this.http.get<{ success: boolean; data: Livreur[] }>(
+      `${this.apiUrl}/utilisateurs`,
+      { ...authOptions, params }
+    ).subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.livreurs = response.data || [];
+        }
       },
-      error: () => {
-        this.financial = { daily_revenue: 1240.5, weekly_revenue: 8560.2, total_payouts: 6200.0, pending_payouts: 850.0 };
-        this.cdr.markForCheck();
+      error: (err) => console.error('Error loading livreurs:', err)
+    });
+  }
+
+  get filteredLivreurs(): Livreur[] {
+    if (this.livreursFilter === 'all') return this.livreurs;
+    return this.livreurs.filter(l => {
+      if (this.livreursFilter === 'pending') return l.statut === 'en_attente';
+      if (this.livreursFilter === 'active') return l.statut === 'actif';
+      if (this.livreursFilter === 'suspended') return l.statut === 'suspendu';
+      return true;
+    });
+  }
+
+  viewLivreur(livreur: Livreur): void {
+    this.selectedLivreur = livreur;
+    this.showLivreurModal = true;
+  }
+
+  updateLivreurStatus(livreurId: string, newStatus: string): void {
+    const authOptions = this.auth.getAuthHeaders();
+    this.http.patch<{ success: boolean }>(
+      `${this.apiUrl}/utilisateurs/${livreurId}/statut`,
+      { statut: newStatus },
+      authOptions
+    ).subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.toast.showToast('Statut du livreur mis à jour', 'success');
+          this.loadLivreurs();
+          this.loadStats();
+          this.showLivreurModal = false;
+        }
+      },
+      error: (err) => {
+        this.toast.showToast('Erreur lors de la mise à jour', 'error');
       }
     });
   }
 
-  private loadAnalytics(): void {
-    this.http.get<any>(`${this.apiUrl}/admin/analytics`, this.getAuthOptions()).subscribe({
-      next: res => {
-        if (res?.success && res.data) this.analytics = res.data;
-        this.cdr.markForCheck();
+  verifyLivreur(livreurId: string): void {
+    this.updateLivreurStatus(livreurId, 'actif');
+  }
+
+  suspendLivreur(livreurId: string): void {
+    this.updateLivreurStatus(livreurId, 'suspendu');
+  }
+
+  // ========== GESTION DES FOURNISSEURS ==========
+  loadFournisseurs(): void {
+    const authOptions = this.auth.getAuthHeaders();
+    let params = new HttpParams().set('role', 'fournisseur');
+    
+    this.http.get<{ success: boolean; data: Fournisseur[] }>(
+      `${this.apiUrl}/utilisateurs`,
+      { ...authOptions, params }
+    ).subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.fournisseurs = response.data || [];
+        }
       },
-      error: () => {
-        this.analytics = { deliveries_today: 342, avg_delivery_time: 28, cancellation_rate: 2.3, customer_satisfaction: 94 };
-        this.cdr.markForCheck();
+      error: (err) => console.error('Error loading fournisseurs:', err)
+    });
+  }
+
+  get filteredFournisseurs(): Fournisseur[] {
+    if (this.fournisseursFilter === 'all') return this.fournisseurs;
+    return this.fournisseurs.filter(f => {
+      if (this.fournisseursFilter === 'active') return f.statut === 'actif';
+      if (this.fournisseursFilter === 'suspended') return f.statut === 'suspendu';
+      return true;
+    });
+  }
+
+  updateFournisseurStatus(fournisseurId: string, newStatus: string): void {
+    const authOptions = this.auth.getAuthHeaders();
+    this.http.patch<{ success: boolean }>(
+      `${this.apiUrl}/utilisateurs/${fournisseurId}/statut`,
+      { statut: newStatus },
+      authOptions
+    ).subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.toast.showToast('Statut du fournisseur mis à jour', 'success');
+          this.loadFournisseurs();
+          this.loadStats();
+        }
+      },
+      error: (err) => {
+        this.toast.showToast('Erreur lors de la mise à jour', 'error');
       }
     });
   }
 
-  private loadNotifications(): void {
-    this.http.get<any>(`${this.apiUrl}/admin/notifications`, this.getAuthOptions()).subscribe({
-      next: res => {
-        if (res?.success && Array.isArray(res.data)) this.systemNotifications = res.data;
-        this.cdr.markForCheck();
+  // ========== GESTION DES CLIENTS ==========
+  loadClients(): void {
+    const authOptions = this.auth.getAuthHeaders();
+    let params = new HttpParams().set('role', 'client');
+    
+    this.http.get<{ success: boolean; data: Client[] }>(
+      `${this.apiUrl}/utilisateurs`,
+      { ...authOptions, params }
+    ).subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.clients = response.data || [];
+        }
       },
-      error: () => {
-        this.systemNotifications = [
-          { id: '1', title: 'Peak Hour Alert', message: 'High demand in Lyon zone', severity: 'info', timestamp: new Date().toISOString() }
-        ];
-        this.cdr.markForCheck();
+      error: (err) => console.error('Error loading clients:', err)
+    });
+  }
+
+  get filteredClients(): Client[] {
+    if (this.clientsFilter === 'all') return this.clients;
+    return this.clients.filter(c => {
+      if (this.clientsFilter === 'active') return c.statut === 'actif';
+      if (this.clientsFilter === 'suspended') return c.statut === 'suspendu';
+      return true;
+    });
+  }
+
+  updateClientStatus(clientId: string, newStatus: string): void {
+    const authOptions = this.auth.getAuthHeaders();
+    this.http.patch<{ success: boolean }>(
+      `${this.apiUrl}/utilisateurs/${clientId}/statut`,
+      { statut: newStatus },
+      authOptions
+    ).subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.toast.showToast('Statut du client mis à jour', 'success');
+          this.loadClients();
+          this.loadStats();
+        }
+      },
+      error: (err) => {
+        this.toast.showToast('Erreur lors de la mise à jour', 'error');
       }
     });
   }
 
-  private loadTickets(): void {
-    this.http.get<any>(`${this.apiUrl}/admin/support/tickets`, this.getAuthOptions()).subscribe({
-      next: res => {
-        if (res?.success && Array.isArray(res.data)) this.tickets = res.data;
-        this.cdr.markForCheck();
+  // ========== GESTION DES COMMANDES ==========
+  loadCommandes(): void {
+    const authOptions = this.auth.getAuthHeaders();
+    let params = new HttpParams();
+    if (this.commandesFilter !== 'all') {
+      params = params.set('statut', this.commandesFilter);
+    }
+    
+    this.http.get<{ success: boolean; data: Commande[] }>(
+      `${this.apiUrl}/commandes`,
+      { ...authOptions, params }
+    ).subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.commandes = response.data || [];
+        }
       },
-      error: () => {
-        this.tickets = [
-          { id: 't1', subject: 'Missing delivery', status: 'open', priority: 'high', created_at: new Date().toISOString() }
-        ];
-        this.cdr.markForCheck();
+      error: (err) => console.error('Error loading commandes:', err)
+    });
+  }
+
+  get filteredCommandes(): Commande[] {
+    if (this.commandesFilter === 'all') return this.commandes;
+    return this.commandes.filter(c => {
+      if (this.commandesFilter === 'en_cours') return ['en_preparation', 'en_livraison'].includes(c.statut);
+      return c.statut === this.commandesFilter;
+    });
+  }
+
+  viewCommande(commande: Commande): void {
+    const authOptions = this.auth.getAuthHeaders();
+    this.http.get<{ success: boolean; data: Commande }>(
+      `${this.apiUrl}/commandes/${commande.id}`,
+      authOptions
+    ).subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.selectedCommande = response.data;
+          this.showCommandeModal = true;
+        }
       }
     });
   }
 
-  // ---------- Driver Management ----------
-  approveDriver(driver: Driver): void {
-    this.http.post<any>(`${this.apiUrl}/admin/drivers/${driver.id}/approve`, {}, this.getAuthOptions()).subscribe({
-      next: () => {
-        driver.statut = 'active';
-        this.toast.showToast('Driver approved', 'success');
-        this.cdr.markForCheck();
-      },
-      error: () => this.toast.showToast('Failed to approve driver', 'error')
+  // ========== GESTION DES PAIEMENTS ==========
+  loadPaiements(): void {
+    // Cette fonction devrait charger les paiements depuis l'API
+    // Pour l'instant, on calcule depuis les commandes
+    this.revenusTotal = this.commandes
+      .filter(c => c.statut === 'livree')
+      .reduce((sum, c) => sum + (c.montant_total || 0), 0);
+    
+    const today = new Date();
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    this.revenusJour = this.commandes
+      .filter(c => {
+        const date = new Date(c.date_commande);
+        return date.toDateString() === today.toDateString() && c.statut === 'livree';
+      })
+      .reduce((sum, c) => sum + (c.montant_total || 0), 0);
+
+    this.revenusSemaine = this.commandes
+      .filter(c => {
+        const date = new Date(c.date_commande);
+        return date >= weekAgo && c.statut === 'livree';
+      })
+      .reduce((sum, c) => sum + (c.montant_total || 0), 0);
+
+    this.revenusMois = this.commandes
+      .filter(c => {
+        const date = new Date(c.date_commande);
+        return date >= monthAgo && c.statut === 'livree';
+      })
+      .reduce((sum, c) => sum + (c.montant_total || 0), 0);
+  }
+
+  // ========== CENTRE DE SUPPORT ==========
+  loadTickets(): void {
+    // Cette fonction devrait charger les tickets depuis l'API
+    // Pour l'instant, on utilise des données mockées
+    this.tickets = [];
+  }
+
+  get filteredTickets(): SupportTicket[] {
+    if (this.ticketsFilter === 'all') return this.tickets;
+    return this.tickets.filter(t => {
+      if (this.ticketsFilter === 'ouvert') return t.statut === 'ouvert';
+      if (this.ticketsFilter === 'en_cours') return t.statut === 'en_cours';
+      if (this.ticketsFilter === 'resolu') return t.statut === 'resolu';
+      return true;
     });
   }
 
-  suspendDriver(driver: Driver): void {
-    this.http.post<any>(`${this.apiUrl}/admin/drivers/${driver.id}/suspend`, {}, this.getAuthOptions()).subscribe({
-      next: () => {
-        driver.statut = 'suspended';
-        this.toast.showToast('Driver suspended', 'success');
-        this.cdr.markForCheck();
-      },
-      error: () => this.toast.showToast('Failed to suspend driver', 'error')
+  // ========== NOTIFICATIONS ==========
+  loadNotifications(): void {
+    // Cette fonction devrait charger les notifications depuis l'API
+    this.notifications = [];
+    this.unreadCount = this.notifications.filter(n => !n.lu).length;
+  }
+
+  markNotificationAsRead(notificationId: string): void {
+    // Marquer la notification comme lue
+    const notif = this.notifications.find(n => n.id === notificationId);
+    if (notif) {
+      notif.lu = true;
+      this.unreadCount = this.notifications.filter(n => !n.lu).length;
+    }
+  }
+
+  // ========== UTILITAIRES ==========
+  formatCurrency(amount: number): string {
+    return new Intl.NumberFormat('fr-MA', { style: 'currency', currency: 'MAD' }).format(amount);
+  }
+
+  formatDate(date: string): string {
+    return new Date(date).toLocaleDateString('fr-FR', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   }
 
-  // ---------- Delivery Management ----------
-  reassignDelivery(delivery: Delivery, newDriverId: string): void {
-    this.http.post<any>(`${this.apiUrl}/admin/deliveries/${delivery.id}/reassign`, { driver_id: newDriverId }, this.getAuthOptions()).subscribe({
-      next: () => {
-        delivery.driver_id = newDriverId;
-        this.toast.showToast('Delivery reassigned', 'success');
-        this.cdr.markForCheck();
-      },
-      error: () => this.toast.showToast('Failed to reassign', 'error')
-    });
+  getStatusBadge(status: string): string {
+    const badges: { [key: string]: string } = {
+      'actif': 'badge-success',
+      'en_attente': 'badge-warning',
+      'suspendu': 'badge-danger',
+      'livree': 'badge-success',
+      'en_preparation': 'badge-info',
+      'en_livraison': 'badge-warning',
+      'annulee': 'badge-danger'
+    };
+    return badges[status] || 'badge-secondary';
   }
 
-  cancelDelivery(delivery: Delivery): void {
-    this.http.post<any>(`${this.apiUrl}/admin/deliveries/${delivery.id}/cancel`, {}, this.getAuthOptions()).subscribe({
-      next: () => {
-        delivery.status = 'cancelled';
-        this.toast.showToast('Delivery cancelled', 'success');
-        this.cdr.markForCheck();
-      },
-      error: () => this.toast.showToast('Failed to cancel delivery', 'error')
-    });
+  getStatusLabel(status: string): string {
+    const labels: { [key: string]: string } = {
+      'actif': 'Actif',
+      'en_attente': 'En attente',
+      'suspendu': 'Suspendu',
+      'livree': 'Livrée',
+      'en_preparation': 'En préparation',
+      'en_livraison': 'En livraison',
+      'annulee': 'Annulée'
+    };
+    return labels[status] || status;
   }
 
-  // ---------- Configuration ----------
-  saveDeliveryPricing(): void {
-    this.http.post<any>(`${this.apiUrl}/admin/config/pricing`, this.deliveryPricing, this.getAuthOptions()).subscribe({
-      next: () => this.toast.showToast('Pricing updated', 'success'),
-      error: () => this.toast.showToast('Failed to save pricing', 'error')
-    });
+  logout(): void {
+    this.auth.logout();
+    this.router.navigate(['/login']);
   }
 
-  addServiceZone(): void {
-    if (!this.newServiceZone) return;
-    this.serviceZones.push(this.newServiceZone);
-    this.http.post<any>(`${this.apiUrl}/admin/config/zones`, { zone: this.newServiceZone }, this.getAuthOptions()).subscribe({
-      next: () => {
-        this.toast.showToast('Zone added', 'success');
-        this.newServiceZone = '';
-        this.cdr.markForCheck();
-      },
-      error: () => this.toast.showToast('Failed to add zone', 'error')
-    });
-  }
-
-  addPromoCode(): void {
-    if (!this.newPromoCode || this.newPromoDiscount <= 0) return;
-    const promo = { code: this.newPromoCode, discount: this.newPromoDiscount };
-    this.promoCodes.push(promo);
-    this.http.post<any>(`${this.apiUrl}/admin/config/promos`, promo, this.getAuthOptions()).subscribe({
-      next: () => {
-        this.toast.showToast('Promo code added', 'success');
-        this.newPromoCode = '';
-        this.newPromoDiscount = 0;
-        this.cdr.markForCheck();
-      },
-      error: () => this.toast.showToast('Failed to add promo', 'error')
-    });
-  }
-
-  // ---------- Notifications ----------
-  sendNotification(message: string): void {
-    this.http.post<any>(`${this.apiUrl}/admin/notifications/send`, { message }, this.getAuthOptions()).subscribe({
-      next: () => this.toast.showToast('Notification sent', 'success'),
-      error: () => this.toast.showToast('Failed to send notification', 'error')
-    });
-  }
-
-  // ---------- Support ----------
-  resolveTicket(ticket: SupportTicket): void {
-    this.http.post<any>(`${this.apiUrl}/admin/support/tickets/${ticket.id}/resolve`, {}, this.getAuthOptions()).subscribe({
-      next: () => {
-        ticket.status = 'resolved';
-        this.toast.showToast('Ticket resolved', 'success');
-        this.cdr.markForCheck();
-      },
-      error: () => this.toast.showToast('Failed to resolve ticket', 'error')
-    });
-  }
-
-  // ---------- Utilities ----------
-  switchTab(tab: string): void {
+  setActiveTab(tab: string): void {
     this.activeTab = tab;
-    this.cdr.markForCheck();
-  }
-
-  private mockDrivers(): Driver[] {
-    return [
-      { id: 'd1', nom_complet: 'Ahmed Ben Ali', email: 'ahmed@example.com', statut: 'pending', rating: 4.8, deliveries_completed: 150 },
-      { id: 'd2', nom_complet: 'Marie Dupont', email: 'marie@example.com', statut: 'active', rating: 4.9, deliveries_completed: 320 }
-    ];
-  }
-
-  private mockCustomers(): Customer[] {
-    return [
-      { id: 'c1', nom_complet: 'John Smith', email: 'john@example.com', status: 'active', orders_count: 12 },
-      { id: 'c2', nom_complet: 'Sarah Johnson', email: 'sarah@example.com', status: 'active', orders_count: 28 }
-    ];
-  }
-
-  private mockDeliveries(): Delivery[] {
-    return [
-      { id: 'del1', numero_suivi: 'DEL-001', driver_id: 'd1', status: 'ongoing', montant_total: 45.0 },
-      { id: 'del2', numero_suivi: 'DEL-002', driver_id: 'd2', status: 'delivered', montant_total: 32.5 }
-    ];
-  }
-
-  formatCurrency(v: number): string {
-    return (v || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+    // Charger les données spécifiques à l'onglet
+    if (tab === 'livreurs') this.loadLivreurs();
+    if (tab === 'fournisseurs') this.loadFournisseurs();
+    if (tab === 'clients') this.loadClients();
+    if (tab === 'commandes') this.loadCommandes();
+    if (tab === 'paiements') this.loadPaiements();
+    if (tab === 'support') this.loadTickets();
   }
 }
+

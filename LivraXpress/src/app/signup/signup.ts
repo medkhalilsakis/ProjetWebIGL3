@@ -9,7 +9,7 @@ import { CommonModule } from '@angular/common';
 @Component({
   selector: 'app-register',
   templateUrl: './signup.html',
-  styleUrls: ['./signup.css'],
+  styleUrl: './signup.css',
   imports: [CommonModule, ReactiveFormsModule, FormsModule, RouterLink]
 })
 export class Signup implements OnInit {
@@ -19,6 +19,8 @@ export class Signup implements OnInit {
   currentStep = 1;
   selectedRole: string = '';
   showPassword = false;
+  permisFile: File | null = null;
+  carteIdentiteFile: File | null = null;
 
   roles = [
     { 
@@ -63,12 +65,6 @@ export class Signup implements OnInit {
     private authService: AuthService,
     private toastService: ToastService
   ) {
-    // Rediriger si déjà connecté
-    if (this.authService.isAuthenticated) {
-      const role = this.authService.userRole;
-      this.router.navigate([`/${role}/dashboard`]);
-    }
-
     this.registerForm = this.formBuilder.group({
       // Informations de base
       email: ['', [Validators.required, Validators.email]],
@@ -91,13 +87,19 @@ export class Signup implements OnInit {
 
       // Pour livreur
       type_vehicule: [''],
-      numero_permis: ['']
+      numero_permis: [''],
+      permis_file: [null],
+      carte_identite_file: [null]
     }, {
       validator: this.passwordMatchValidator
     });
   }
 
-  ngOnInit(): void {}
+  ngOnInit(): void {
+    // Ne pas rediriger automatiquement - laisser l'utilisateur accéder à la page d'inscription
+    // même s'il est connecté (il peut vouloir créer un autre compte)
+    // La redirection se fera seulement après soumission réussie du formulaire
+  }
 
   get f() { return this.registerForm.controls; }
 
@@ -131,6 +133,8 @@ export class Signup implements OnInit {
     } else if (role === 'livreur') {
       this.f['type_vehicule'].setValidators([Validators.required]);
       this.f['numero_permis'].setValidators([Validators.required]);
+      this.f['permis_file'].setValidators([Validators.required]);
+      this.f['carte_identite_file'].setValidators([Validators.required]);
       
       this.f['nom_entreprise'].clearValidators();
       this.f['type_fournisseur'].clearValidators();
@@ -143,6 +147,8 @@ export class Signup implements OnInit {
       this.f['type_fournisseur'].clearValidators();
       this.f['type_vehicule'].clearValidators();
       this.f['numero_permis'].clearValidators();
+      this.f['permis_file'].clearValidators();
+      this.f['carte_identite_file'].clearValidators();
       this.f['rue'].clearValidators();
       this.f['code_postal'].clearValidators();
       this.f['ville'].clearValidators();
@@ -172,6 +178,44 @@ export class Signup implements OnInit {
     this.showPassword = !this.showPassword;
   }
 
+  onPermisFileSelected(event: any): void {
+    const file = event.target.files[0];
+    if (file) {
+      if (file.type !== 'application/pdf') {
+        this.toastService.showToast('Le fichier du permis doit être un PDF', 'error');
+        event.target.value = '';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        this.toastService.showToast('Le fichier du permis ne doit pas dépasser 5MB', 'error');
+        event.target.value = '';
+        return;
+      }
+      this.permisFile = file;
+      this.registerForm.patchValue({ permis_file: file });
+      this.registerForm.get('permis_file')?.updateValueAndValidity();
+    }
+  }
+
+  onCarteIdentiteFileSelected(event: any): void {
+    const file = event.target.files[0];
+    if (file) {
+      if (file.type !== 'application/pdf') {
+        this.toastService.showToast('Le fichier de la carte d\'identité doit être un PDF', 'error');
+        event.target.value = '';
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        this.toastService.showToast('Le fichier de la carte d\'identité ne doit pas dépasser 5MB', 'error');
+        event.target.value = '';
+        return;
+      }
+      this.carteIdentiteFile = file;
+      this.registerForm.patchValue({ carte_identite_file: file });
+      this.registerForm.get('carte_identite_file')?.updateValueAndValidity();
+    }
+  }
+
   onSubmit(): void {
     this.submitted = true;
 
@@ -185,7 +229,55 @@ export class Signup implements OnInit {
 
     this.loading = true;
 
-    // Préparer les données
+    // Pour les livreurs, utiliser FormData pour envoyer les fichiers
+    if (this.selectedRole === 'livreur') {
+      const formDataToSend = new FormData();
+      formDataToSend.append('email', this.f['email'].value);
+      formDataToSend.append('mot_de_passe', this.f['mot_de_passe'].value);
+      formDataToSend.append('nom_complet', this.f['nom_complet'].value);
+      formDataToSend.append('telephone', this.f['telephone'].value);
+      formDataToSend.append('role', this.f['role'].value);
+      formDataToSend.append('type_vehicule', this.f['type_vehicule'].value);
+      formDataToSend.append('numero_permis', this.f['numero_permis'].value);
+      
+      if (this.permisFile) {
+        formDataToSend.append('permis_file', this.permisFile);
+      }
+      if (this.carteIdentiteFile) {
+        formDataToSend.append('carte_identite_file', this.carteIdentiteFile);
+      }
+
+      // Envoyer la requête avec FormData
+      this.authService.registerWithFiles(formDataToSend).subscribe(
+        response => {
+          if (response.success) {
+            this.toastService.showToast(
+              'Inscription réussie ! Votre compte sera activé après vérification de vos documents.',
+              'success'
+            );
+            setTimeout(() => {
+              this.router.navigate(['/login']);
+            }, 2000);
+          } else {
+            this.toastService.showToast(
+              response.message || 'Erreur lors de l\'inscription',
+              'error'
+            );
+            this.loading = false;
+          }
+        },
+        error => {
+          this.toastService.showToast(
+            error.error?.message || 'Erreur lors de l\'inscription',
+            'error'
+          );
+          this.loading = false;
+        }
+      );
+      return;
+    }
+
+    // Pour les autres rôles, utiliser le format JSON normal
     const formData = {
       email: this.f['email'].value,
       mot_de_passe: this.f['mot_de_passe'].value,
@@ -207,11 +299,6 @@ export class Signup implements OnInit {
           latitude: this.f['latitude'].value || 33.5731,
           longitude: this.f['longitude'].value || -7.5898
         }
-      };
-    } else if (this.selectedRole === 'livreur') {
-      formData.additional_data = {
-        type_vehicule: this.f['type_vehicule'].value,
-        numero_permis: this.f['numero_permis'].value
       };
     }
 

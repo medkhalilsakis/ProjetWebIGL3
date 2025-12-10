@@ -1,3 +1,23 @@
+<header class="main-header">
+  <div class="container">
+    <div class="logo-section" (click)="goHome()">
+      <mat-icon class="logo-icon">local_shipping</mat-icon>
+      <span class="logo-text">Livra<span class="logo-highlight">Xpress</span></span>
+    </div>
+
+    <nav class="main-nav">
+      <a routerLink="/" class="nav-item">Accueil</a>
+      <a routerLink="/produits" class="nav-item">Produits</a>
+      <a routerLink="/cities" class="nav-item">Villes</a>
+      <a routerLink="/contact" class="nav-item">Contact</a>
+    </nav>
+
+    <div class="auth-buttons">
+      <button mat-stroked-button class="signin-btn" (click)="goHome()">Retour</button>
+      <button mat-raised-button class="signup-btn" (click)="logout()">Déconnexion</button>
+    </div>
+  </div>
+</header>
 <div class="dashboard">
   <header class="dashboard-header">
     <div class="header-left">

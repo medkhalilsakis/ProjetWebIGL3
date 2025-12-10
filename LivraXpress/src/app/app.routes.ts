@@ -5,6 +5,8 @@ import { Login } from './login/login';
 import { Signup } from './signup/signup';
 import { ClientDashboardComponent } from './client-dashboard/client-dashboard';
 import { FournisseurDashboard } from './fournisseur-dashboard/fournisseur-dashboard';
+import { AdminDashboardComponent } from './admin-dashboard/admin-dashboard';
+import { AddAdmin } from './add-admin/add-admin';
 import { Accueil } from './accueil/accueil';
 import { ListProduits } from './list-produits/list-produits';
 
@@ -42,6 +44,18 @@ export const routes: Routes = [
     data: { role: 'fournisseur' },
     children: [
       { path: 'dashboard', component: FournisseurDashboard },
+      { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
+    ]
+  },
+
+  // 👑 Routes protégées admin
+  {
+    path: 'admin',
+    canActivate: [AuthGuard, RoleGuard],
+    data: { role: 'admin' },
+    children: [
+      { path: 'dashboard', component: AdminDashboardComponent },
+      { path: 'add-admin', component: AddAdmin },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
     ]
   },

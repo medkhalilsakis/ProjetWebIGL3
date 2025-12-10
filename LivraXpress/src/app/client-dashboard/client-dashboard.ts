@@ -8,6 +8,7 @@ import { catchError, map, switchMap } from 'rxjs/operators';
 import { AuthService } from '../services/authentification';
 import { ToastService } from '../services/toast';
 import { NotificationService, Notification } from '../services/notification';
+import { MatIconModule } from '@angular/material/icon';
 
 interface Order {
   id: string;
@@ -80,10 +81,26 @@ interface SupportTicket {
   date_creation: string;
 }
 
+interface CartItem {
+  product: {
+    id?: string;
+    nom: string;
+    prix: number;
+    prix_promotion?: number;
+  };
+  quantity: number;
+}
+
+interface DeliveryOption {
+  livreur: string;
+  etaMinutes: number;
+  price: number;
+}
+
 @Component({
   selector: 'app-client-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, MatIconModule],
   templateUrl: './client-dashboard.html',
   styleUrls: ['./client-dashboard.css'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -171,6 +188,14 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
   settingsForm!: FormGroup;
   twoFactorEnabled = false;
 
+  // Cart (shared local storage)
+  cart: CartItem[] = [];
+  private cartKey = 'lx_cart';
+  selectedAddressId: string | null = null;
+  paymentChoice: 'carte' | 'espece' = 'carte';
+  deliveryOptions: DeliveryOption[] = [];
+  searchingDelivery = false;
+
   private refreshSub?: Subscription;
 
   constructor(
@@ -194,6 +219,8 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    this.loadCart();
+    this.selectedAddressId = this.addresses[0]?.id || null;
     this.initForms();
     this.loadAll();
     this.observeNotifications();
@@ -420,6 +447,65 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
       annulee: 'badge-danger'
     };
     return `badge ${map[statut] || 'badge-secondary'}`;
+  }
+
+  // ---------- Cart helpers ----------
+  private loadCart(): void {
+    try {
+      const raw = localStorage.getItem(this.cartKey);
+      if (raw) this.cart = JSON.parse(raw);
+    } catch {
+      this.cart = [];
+    }
+  }
+
+  cartCount(): number {
+    return this.cart.reduce((sum, item) => sum + item.quantity, 0);
+  }
+
+  cartTotal(): number {
+    return this.cart.reduce((sum, item) => {
+      const price = item.product.prix_promotion || item.product.prix;
+      return sum + price * item.quantity;
+    }, 0);
+  }
+
+  finalizeCart(): void {
+    if (this.cartCount() === 0) {
+      this.toast.showToast('Votre panier est vide.', 'info');
+      return;
+    }
+    if (!this.selectedAddressId) {
+      this.toast.showToast('Sélectionnez une adresse.', 'warning');
+      return;
+    }
+    this.searchDeliveryOptions();
+  }
+
+  private searchDeliveryOptions(): void {
+    this.searchingDelivery = true;
+    this.deliveryOptions = [];
+    // Example call to backend (to implement server-side):
+    this.http
+      .get<any>(`${this.apiUrl}/livreurs/disponibles?limit=3`, this.auth.getAuthHeaders())
+      .pipe(
+        catchError(() =>
+          of({
+            success: true,
+            data: [
+              { livreur: 'Amine', etaMinutes: 15, price: 6.5 },
+              { livreur: 'Sonia', etaMinutes: 22, price: 5.9 },
+              { livreur: 'Karim', etaMinutes: 30, price: 4.8 }
+            ]
+          })
+        )
+      )
+      .subscribe((res) => {
+        this.deliveryOptions = res?.data || [];
+        this.searchingDelivery = false;
+        this.toast.showToast('Livreurs disponibles mis à jour', 'success');
+        this.cdr.markForCheck();
+      });
   }
 
   // ---------- Addresses ----------

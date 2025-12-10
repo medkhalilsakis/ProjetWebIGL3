@@ -7,6 +7,8 @@ import { catchError, map, switchMap, tap } from 'rxjs/operators';
 import { AuthService, User } from '../services/authentification';
 import { ToastService } from '../services/toast';
 import { NotificationService, Notification } from '../services/notification';
+import { MatIconModule } from '@angular/material/icon';
+import { Router } from '@angular/router';
 
 interface DashboardStats {
   ordersToday: number;
@@ -83,7 +85,7 @@ interface Review {
 @Component({
   selector: 'app-fournisseur-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, MatIconModule],
   templateUrl: './fournisseur-dashboard.html',
   styleUrls: ['./fournisseur-dashboard.css'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -181,6 +183,7 @@ export class FournisseurDashboard implements OnInit, OnDestroy {
     private auth: AuthService,
     private toast: ToastService,
     private notifService: NotificationService,
+    private router: Router,
     private cdr: ChangeDetectorRef
   ) {
     this.currentUser = this.auth.currentUserValue;
@@ -810,4 +813,7 @@ export class FournisseurDashboard implements OnInit, OnDestroy {
     if (globalCrypto?.randomUUID) return globalCrypto.randomUUID();
     return Math.random().toString(36).slice(2, 10);
   }
+  goHome(): void {
+    this.router.navigate(['/']);
+  }  
 }

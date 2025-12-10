@@ -80,7 +80,80 @@ async function getUserWithRoles(email) {
 router.post('/register', async (req, res) => {
   const client = await db.connect();
   try {
-    const { email, mot_de_passe, nom_complet, telephone, role, additional_data = {} } = req.body;
+    // Check if this is a FormData request (for livreur with files)
+    const isFormData = req.headers['content-type'] && req.headers['content-type'].includes('multipart/form-data');
+    
+    let email, mot_de_passe, nom_complet, telephone, role, additional_data = {};
+    let permisFile = null;
+    let carteIdentiteFile = null;
+
+    if (isFormData) {
+      // Handle FormData (livreur registration with PDF files)
+      email = req.body.email;
+      mot_de_passe = req.body.mot_de_passe;
+      nom_complet = req.body.nom_complet;
+      telephone = req.body.telephone;
+      role = req.body.role;
+      
+      // Get files
+      if (req.files) {
+        permisFile = req.files.permis_file;
+        carteIdentiteFile = req.files.carte_identite_file;
+      }
+
+      // Validate files for livreur
+      if (role === 'livreur') {
+        if (!permisFile || !carteIdentiteFile) {
+          return res.status(400).json({ 
+            success: false, 
+            code: 'VALIDATION_ERROR', 
+            message: 'Les fichiers PDF du permis de conduire et de la carte d\'identité sont requis' 
+          });
+        }
+
+        // Validate file types
+        if (permisFile.mimetype !== 'application/pdf') {
+          return res.status(400).json({ 
+            success: false, 
+            code: 'VALIDATION_ERROR', 
+            message: 'Le fichier du permis doit être un PDF' 
+          });
+        }
+
+        if (carteIdentiteFile.mimetype !== 'application/pdf') {
+          return res.status(400).json({ 
+            success: false, 
+            code: 'VALIDATION_ERROR', 
+            message: 'Le fichier de la carte d\'identité doit être un PDF' 
+          });
+        }
+
+        // Validate file sizes (5MB max)
+        if (permisFile.size > 5 * 1024 * 1024) {
+          return res.status(400).json({ 
+            success: false, 
+            code: 'VALIDATION_ERROR', 
+            message: 'Le fichier du permis ne doit pas dépasser 5MB' 
+          });
+        }
+
+        if (carteIdentiteFile.size > 5 * 1024 * 1024) {
+          return res.status(400).json({ 
+            success: false, 
+            code: 'VALIDATION_ERROR', 
+            message: 'Le fichier de la carte d\'identité ne doit pas dépasser 5MB' 
+          });
+        }
+      }
+
+      additional_data = {
+        type_vehicule: req.body.type_vehicule,
+        numero_permis: req.body.numero_permis
+      };
+    } else {
+      // Handle JSON request (other roles)
+      ({ email, mot_de_passe, nom_complet, telephone, role, additional_data = {} } = req.body);
+    }
 
     if (!email || !mot_de_passe || !nom_complet || !role) {
       return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: 'Email, password, name, and role are required' });
@@ -96,18 +169,94 @@ router.post('/register', async (req, res) => {
     const hashed = await bcrypt.hash(mot_de_passe, SALT_ROUNDS);
     const userId = uuidv4();
 
+    // Set status to 'en_attente' for livreur (pending verification)
+    const statut = role === 'livreur' ? 'en_attente' : 'actif';
+
     await client.query(
       `INSERT INTO utilisateurs (id, email, mot_de_passe, nom_complet, telephone, role, statut, date_creation)
-       VALUES ($1,$2,$3,$4,$5,$6,'actif', now())`,
-      [userId, email, hashed, nom_complet || null, telephone || null, role]
+       VALUES ($1,$2,$3,$4,$5,$6,$7, now())`,
+      [userId, email, hashed, nom_complet || null, telephone || null, role, statut]
     );
 
     if (role === 'client') {
       await client.query('INSERT INTO clients (id, utilisateur_id) VALUES ($1,$2)', [uuidv4(), userId]);
     } else if (role === 'livreur') {
       const { type_vehicule, numero_permis } = additional_data || {};
-      await client.query('INSERT INTO livreurs (id, utilisateur_id, type_vehicule, numero_permis) VALUES ($1,$2,$3,$4)',
-        [uuidv4(), userId, type_vehicule || null, numero_permis || null]);
+      
+      // Upload PDF files
+      const fs = require('fs');
+      const path = require('path');
+      const sanitize = (name) => name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      
+      const uploadDir = path.join(__dirname, '../uploads/documents');
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+      let permisPath = null;
+      let carteIdentitePath = null;
+
+      if (permisFile) {
+        const permisFilename = `permis_${userId}_${Date.now()}_${sanitize(permisFile.name || 'permis')}.pdf`;
+        const permisFilepath = path.join(uploadDir, permisFilename);
+        await permisFile.mv(permisFilepath);
+        permisPath = `/uploads/documents/${permisFilename}`;
+      }
+
+      if (carteIdentiteFile) {
+        const carteFilename = `carte_${userId}_${Date.now()}_${sanitize(carteIdentiteFile.name || 'carte')}.pdf`;
+        const carteFilepath = path.join(uploadDir, carteFilename);
+        await carteIdentiteFile.mv(carteFilepath);
+        carteIdentitePath = `/uploads/documents/${carteFilename}`;
+      }
+
+      // Store document paths in a JSONB column or separate table
+      // For now, we'll store them in a JSONB column in livreurs table
+      // Note: You may need to add columns to livreurs table: permis_document_path, carte_identite_document_path
+      await client.query(
+        `INSERT INTO livreurs (id, utilisateur_id, type_vehicule, numero_permis, vehicule_enregistre, assurance_valide) 
+         VALUES ($1,$2,$3,$4,false,false)`,
+        [uuidv4(), userId, type_vehicule || null, numero_permis || null]
+      );
+
+      // Store document paths - try to insert into documents_livreurs table if it exists
+      // Otherwise, we'll store paths in livreurs table directly (need to add columns)
+      // For now, let's try to create/use a simple approach
+      try {
+        // Try to create table if it doesn't exist (will fail silently if exists)
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS documents_livreurs (
+            id VARCHAR(36) PRIMARY KEY,
+            livreur_id VARCHAR(36) NOT NULL,
+            type_document VARCHAR(50) NOT NULL,
+            chemin_fichier VARCHAR(500) NOT NULL,
+            date_upload TIMESTAMP DEFAULT NOW(),
+            FOREIGN KEY (livreur_id) REFERENCES livreurs(id) ON DELETE CASCADE
+          )
+        `).catch(() => {}); // Ignore if table already exists
+
+        const livreurIdResult = await client.query('SELECT id FROM livreurs WHERE utilisateur_id = $1', [userId]);
+        const livreurId = livreurIdResult.rows[0]?.id;
+
+        if (livreurId) {
+          if (permisPath) {
+            await client.query(
+              `INSERT INTO documents_livreurs (id, livreur_id, type_document, chemin_fichier, date_upload)
+               VALUES ($1, $2, 'permis', $3, now())`,
+              [uuidv4(), livreurId, permisPath]
+            ).catch(err => console.error('Error inserting permis document:', err));
+          }
+
+          if (carteIdentitePath) {
+            await client.query(
+              `INSERT INTO documents_livreurs (id, livreur_id, type_document, chemin_fichier, date_upload)
+               VALUES ($1, $2, 'carte_identite', $3, now())`,
+              [uuidv4(), livreurId, carteIdentitePath]
+            ).catch(err => console.error('Error inserting carte identite document:', err));
+          }
+        }
+      } catch (docErr) {
+        console.error('Error handling documents:', docErr);
+        // Continue even if document storage fails - the livreur is still created
+      }
     } else if (role === 'fournisseur') {
       const { nom_entreprise, type_fournisseur, adresse } = additional_data || {};
       const adresseId = adresse ? uuidv4() : null;
@@ -134,7 +283,13 @@ router.post('/register', async (req, res) => {
     }
 
     await client.query('COMMIT');
-    res.status(201).json({ success: true, message: 'Registration successful', userId });
+    res.status(201).json({ 
+      success: true, 
+      message: role === 'livreur' 
+        ? 'Inscription réussie. Votre compte sera activé après vérification de vos documents.' 
+        : 'Registration successful', 
+      userId 
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Registration error:', err);
@@ -160,6 +315,34 @@ router.post('/login', async (req, res) => {
 
     if (user.statut !== 'actif' && user.statut !== 'verifie') {
       return res.status(403).json({ success: false, code: 'ACCOUNT_INACTIVE', message: `Account is ${user.statut}. Contact support.` });
+    }
+
+    // Check if livreur's permit is verified
+    if (user.role === 'livreur' && user.livreur_id) {
+      const livreurResult = await db.query(
+        `SELECT numero_permis, vehicule_enregistre, assurance_valide 
+         FROM livreurs 
+         WHERE id = $1`,
+        [user.livreur_id]
+      );
+      
+      if (livreurResult.rows.length > 0) {
+        const livreur = livreurResult.rows[0];
+        // Check if permit is not verified (no permit number or vehicle not registered or insurance not valid)
+        const permitNotVerified = !livreur.numero_permis || 
+                                  livreur.vehicule_enregistre === false || 
+                                  livreur.vehicule_enregistre === null ||
+                                  livreur.assurance_valide === false || 
+                                  livreur.assurance_valide === null;
+        
+        if (permitNotVerified) {
+          return res.status(403).json({ 
+            success: false, 
+            code: 'PERMIT_NOT_VERIFIED', 
+            message: 'Votre permis de conduire n\'est pas encore vérifié et accepté. Veuillez contacter le support pour finaliser votre inscription.' 
+          });
+        }
+      }
     }
 
     const session = await createUserSession(user, req);

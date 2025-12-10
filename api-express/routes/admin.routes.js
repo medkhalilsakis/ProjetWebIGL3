@@ -23,22 +23,61 @@ router.get('/utilisateurs', authMiddleware, checkRole('admin'), async (req, res)
     const where = [];
     const params = [];
 
-    if (role) { params.push(role); where.push(`role = $${params.length}`); }
-    if (statut) { params.push(statut); where.push(`statut = $${params.length}`); }
+    if (role) { params.push(role); where.push(`u.role = $${params.length}`); }
+    if (statut) { params.push(statut); where.push(`u.statut = $${params.length}`); }
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    const sql = `SELECT id, email, nom_complet, role, statut, date_creation
-                 FROM utilisateurs
-                 ${whereClause}
-                 ORDER BY date_creation DESC
-                 LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    // Query avec jointures pour obtenir les détails selon le rôle
+    let sql = `SELECT u.id, u.email, u.nom_complet, u.telephone, u.role, u.statut, u.date_creation,
+                      u.photo_profil`;
+    
+    if (role === 'livreur' || !role) {
+      sql += `, l.type_vehicule, l.numero_permis, l.note_moyenne, l.nombre_livraisons,
+                     l.vehicule_enregistre, l.assurance_valide`;
+    }
+    
+    if (role === 'fournisseur' || !role) {
+      sql += `, f.nom_entreprise, f.type_fournisseur`;
+    }
+
+    sql += ` FROM utilisateurs u
+             LEFT JOIN livreurs l ON u.id = l.utilisateur_id
+             LEFT JOIN fournisseurs f ON u.id = f.utilisateur_id
+             ${whereClause}
+             ORDER BY u.date_creation DESC
+             LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
 
     params.push(limit, offset);
 
     const result = await db.query(sql, params);
 
-    return res.json({ success: true, data: result.rows });
+    // Formater les résultats
+    const formatted = result.rows.map(row => ({
+      id: row.id,
+      email: row.email,
+      nom_complet: row.nom_complet,
+      telephone: row.telephone,
+      role: row.role,
+      statut: row.statut,
+      date_creation: row.date_creation,
+      photo_profil: row.photo_profil,
+      ...(row.role === 'livreur' && {
+        type_vehicule: row.type_vehicule,
+        numero_permis: row.numero_permis,
+        note_moyenne: row.note_moyenne ? parseFloat(row.note_moyenne) : null,
+        nombre_livraisons: row.nombre_livraisons || 0,
+        vehicule_enregistre: row.vehicule_enregistre,
+        assurance_valide: row.assurance_valide,
+        verifie: row.vehicule_enregistre && row.assurance_valide && row.numero_permis
+      }),
+      ...(row.role === 'fournisseur' && {
+        nom_entreprise: row.nom_entreprise,
+        type_fournisseur: row.type_fournisseur
+      })
+    }));
+
+    return res.json({ success: true, data: formatted });
   } catch (error) {
     console.error('Error fetching users:', error);
     return res.status(500).json({ success: false, message: 'Error fetching users' });
@@ -121,10 +160,12 @@ router.get('/commandes', authMiddleware, checkRole('admin'), async (req, res) =>
 
     const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    const sql = `SELECT c.*, f.nom_entreprise, cl.id as client_id
+    const sql = `SELECT c.*, f.nom_entreprise, cl.id as client_id,
+                        u.nom_complet as client_nom
                  FROM commandes c
                  LEFT JOIN fournisseurs f ON c.fournisseur_id = f.id
                  LEFT JOIN clients cl ON c.client_id = cl.id
+                 LEFT JOIN utilisateurs u ON cl.utilisateur_id = u.id
                  ${whereClause}
                  ORDER BY c.date_commande DESC
                  LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
@@ -174,6 +215,84 @@ router.get('/commandes/:id', authMiddleware, checkRole('admin'), async (req, res
   } catch (error) {
     console.error('Error fetching order:', error);
     return res.status(500).json({ success: false, message: 'Error fetching order' });
+  }
+});
+
+// POST create admin user
+router.post('/utilisateurs', authMiddleware, checkRole('admin'), async (req, res) => {
+  const client = await db.connect();
+  try {
+    const { email, mot_de_passe, nom_complet, telephone, role, statut } = req.body;
+
+    // Validation
+    if (!email || !mot_de_passe || !nom_complet) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email, mot de passe et nom complet sont requis' 
+      });
+    }
+
+    // Vérifier que le rôle est admin
+    if (role && role !== 'admin') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Seul le rôle admin peut être créé via cette route' 
+      });
+    }
+
+    // Vérifier si l'email existe déjà
+    const existsRes = await client.query('SELECT 1 FROM utilisateurs WHERE email = $1', [email]);
+    if (existsRes.rowCount > 0) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Cet email est déjà utilisé' 
+      });
+    }
+
+    await client.query('BEGIN');
+
+    // Hasher le mot de passe
+    const bcrypt = require('bcrypt');
+    const SALT_ROUNDS = 10;
+    const hashed = await bcrypt.hash(mot_de_passe, SALT_ROUNDS);
+    const userId = require('uuid').v4();
+
+    // Créer l'utilisateur admin
+    await client.query(
+      `INSERT INTO utilisateurs (id, email, mot_de_passe, nom_complet, telephone, role, statut, date_creation)
+       VALUES ($1, $2, $3, $4, $5, 'admin', $6, now())`,
+      [userId, email, hashed, nom_complet, telephone || null, statut || 'actif']
+    );
+
+    // Créer l'entrée dans la table admins
+    await client.query(
+      `INSERT INTO admins (id, utilisateur_id) VALUES ($1, $2)`,
+      [require('uuid').v4(), userId]
+    );
+
+    await client.query('COMMIT');
+
+    return res.status(201).json({ 
+      success: true, 
+      message: 'Administrateur créé avec succès',
+      utilisateur: {
+        id: userId,
+        email: email,
+        nom_complet: nom_complet,
+        role: 'admin',
+        statut: statut || 'actif'
+      }
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Error creating admin:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Erreur lors de la création de l\'administrateur',
+      details: error.message 
+    });
+  } finally {
+    client.release();
   }
 });
 

@@ -1,3 +1,25 @@
+<!-- Navbar (same structure as Accueil) -->
+<header class="main-header">
+  <div class="container">
+    <div class="logo-section" (click)="goHome()">
+      <mat-icon class="logo-icon">local_shipping</mat-icon>
+      <span class="logo-text">Livra<span class="logo-highlight">Xpress</span></span>
+    </div>
+
+    <nav class="main-nav">
+      <a routerLink="/" class="nav-item">Accueil</a>
+      <a routerLink="/produits" class="nav-item">Produits</a>
+      <a routerLink="/cities" class="nav-item">Villes</a>
+      <a routerLink="/contact" class="nav-item">Contact</a>
+    </nav>
+
+    <div class="auth-buttons">
+      <button mat-stroked-button class="signin-btn" (click)="goHome()">Retour</button>
+      <button mat-raised-button class="signup-btn" (click)="logout()">Déconnexion</button>
+    </div>
+  </div>
+</header>
+
 <div class="dashboard">
   <!-- Header -->
   <header class="dashboard-header">
@@ -25,8 +47,6 @@
   <!-- Navigation Tabs -->
   <nav class="tab-nav">
     <button [class.active]="activeTab === 'accueil'" (click)="switchTab('accueil')">Accueil</button>
-    <button class="ghost-link" (click)="goHome()">Accueil public</button>
-    <button class="ghost-link" (click)="goProducts()">Produits</button>
     <button [class.active]="activeTab === 'commande_en_cours'" (click)="switchTab('commande_en_cours')">
       Commande en cours
       <span *ngIf="activeOrder" class="badge badge-danger">1</span>
@@ -44,6 +64,64 @@
   <!-- Accueil -->
   <section *ngIf="activeTab === 'accueil'" class="panel">
     <h2>Tableau de bord</h2>
+
+    <!-- Panier / Checkout -->
+    <div class="card cart-summary" *ngIf="cartCount() > 0; else emptyCart">
+      <div class="cart-summary-info">
+        <div>
+          <p class="label">Panier en attente</p>
+          <h3>{{ cartCount() }} article(s)</h3>
+          <p class="total">{{ cartTotal() | currency:'TND':'symbol' }}</p>
+        </div>
+      </div>
+
+      <div class="checkout-grid">
+        <div>
+          <p class="label">Adresse de livraison</p>
+          <select [(ngModel)]="selectedAddressId" class="checkout-select">
+            <option [ngValue]="null">Sélectionner...</option>
+            <option *ngFor="let addr of addresses" [ngValue]="addr.id">
+              {{ addr.rue }}, {{ addr.ville }} {{ addr.code_postal }}
+            </option>
+          </select>
+          <button class="ghost" (click)="showAddressForm = true">+ Ajouter une adresse</button>
+        </div>
+
+        <div>
+          <p class="label">Méthode de paiement</p>
+          <label class="radio">
+            <input type="radio" name="pay" value="carte" [(ngModel)]="paymentChoice" />
+            Carte bancaire
+          </label>
+          <label class="radio">
+            <input type="radio" name="pay" value="espece" [(ngModel)]="paymentChoice" />
+            Espèce à la livraison
+          </label>
+        </div>
+      </div>
+
+      <button class="btn" (click)="finalizeCart()" [disabled]="searchingDelivery">
+        <span *ngIf="!searchingDelivery">Finaliser ma commande</span>
+        <span *ngIf="searchingDelivery">Recherche d'un livreur...</span>
+      </button>
+
+      <div class="delivery-options" *ngIf="deliveryOptions.length > 0">
+        <p class="label">Livreurs disponibles</p>
+        <div class="delivery-card" *ngFor="let opt of deliveryOptions">
+          <div>
+            <strong>{{ opt.livreur }}</strong>
+            <p>{{ opt.etaMinutes }} min</p>
+          </div>
+          <div class="price">{{ opt.price | currency:'TND':'symbol' }}</div>
+        </div>
+      </div>
+    </div>
+    <ng-template #emptyCart>
+      <div class="card cart-summary empty">
+        <p>Votre panier est vide.</p>
+        <button class="btn ghost" (click)="goProducts()">Voir les produits</button>
+      </div>
+    </ng-template>
 
     <!-- Active Order Card -->
     <div *ngIf="activeOrder" class="card active-order-card">

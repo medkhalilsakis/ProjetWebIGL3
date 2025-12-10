@@ -17,6 +17,8 @@ export class Login implements OnInit {
   submitted = false;
   returnUrl: string = '/';
   showPassword = false;
+  permitNotVerified = false;
+  permitMessage = '';
 
   constructor(
     private formBuilder: FormBuilder,
@@ -114,8 +116,19 @@ export class Login implements OnInit {
       },
       err => {
         this.loading = false;
+        const errorCode = err?.error?.code;
         const serverMsg = err?.error?.message || 'Email ou mot de passe incorrect';
-        this.toastService.showToast(serverMsg, 'error');
+        
+        // Special handling for permit not verified
+        if (errorCode === 'PERMIT_NOT_VERIFIED') {
+          this.permitNotVerified = true;
+          this.permitMessage = serverMsg;
+          this.toastService.showToast(serverMsg, 'warning');
+        } else {
+          this.permitNotVerified = false;
+          this.permitMessage = '';
+          this.toastService.showToast(serverMsg, 'error');
+        }
       }
     );
   }

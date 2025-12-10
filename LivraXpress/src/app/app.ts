@@ -1,8 +1,5 @@
-import { Component, NgModule, signal, OnInit, OnDestroy } from '@angular/core';
+import { Component, signal, OnInit, OnDestroy } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { Accueil } from './accueil/accueil';
-import { Login } from './login/login';
-import { Signup } from './signup/signup';
 import { HTTP_INTERCEPTORS } from '@angular/common/http';
 import { AuthInterceptor } from './core/auth.interceptor';
 import { AuthService } from './services/authentification';
@@ -10,7 +7,7 @@ import { interval, Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, Accueil, Login, Signup],
+  imports: [RouterOutlet],
   templateUrl: './app.html',
   styleUrl: './app.css',
   providers: [
