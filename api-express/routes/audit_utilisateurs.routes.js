@@ -4,29 +4,33 @@ const router = express.Router();
 const db = require('../config/database');
 const { authMiddleware, checkRole } = require('../middleware/auth.middleware');
 
+function parseLimitOffset(qLimit, qOffset, defaultLimit = 100) {
+  let limit = parseInt(qLimit, 10) || defaultLimit;
+  let offset = parseInt(qOffset, 10) || 0;
+  if (limit < 1) limit = 1;
+  if (limit > 1000) limit = 1000;
+  if (offset < 0) offset = 0;
+  return { limit, offset };
+}
+
 // GET user audit logs
 router.get('/', authMiddleware, checkRole('admin'), async (req, res) => {
   try {
-    const { utilisateur_id, action, limit = 100, offset = 0 } = req.query;
+    const { utilisateur_id, action } = req.query;
+    const { limit, offset } = parseLimitOffset(req.query.limit, req.query.offset, 100);
 
-    let query = 'SELECT * FROM audit_utilisateurs';
+    const where = [];
     const params = [];
-    let paramCount = 1;
 
-    if (utilisateur_id) {
-      query += ` WHERE utilisateur_id = $${paramCount++}`;
-      params.push(utilisateur_id);
-    }
+    if (utilisateur_id) { params.push(utilisateur_id); where.push(`utilisateur_id = $${params.length}`); }
+    if (action) { params.push(action); where.push(`action = $${params.length}`); }
 
-    if (action) {
-      query += (utilisateur_id ? ' AND' : ' WHERE') + ` action = $${paramCount++}`;
-      params.push(action);
-    }
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    query += ` ORDER BY date_action DESC LIMIT $${paramCount++} OFFSET $${paramCount}`;
+    const sql = `SELECT * FROM audit_utilisateurs ${whereClause} ORDER BY date_action DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     params.push(limit, offset);
 
-    const result = await db.query(query, params);
+    const result = await db.query(sql, params);
 
     return res.json({
       success: true,
@@ -49,7 +53,7 @@ router.get('/', authMiddleware, checkRole('admin'), async (req, res) => {
 router.get('/utilisateur/:utilisateur_id', authMiddleware, checkRole('admin'), async (req, res) => {
   try {
     const { utilisateur_id } = req.params;
-    const { limit = 50, offset = 0 } = req.query;
+    const { limit, offset } = parseLimitOffset(req.query.limit, req.query.offset, 50);
 
     const result = await db.query(
       `SELECT * FROM audit_utilisateurs 

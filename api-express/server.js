@@ -1,3 +1,6 @@
+require('dotenv').config();
+
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -9,7 +12,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware globaux
-app.use(helmet());
+app.use(helmet({
+  // Autoriser l'accès cross-origin aux ressources statiques (images uploads)
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginEmbedderPolicy: false
+}));
 app.use(compression());
 app.use(cors({
   origin: 'http://localhost:4200',

@@ -18,15 +18,12 @@ export class AuthInterceptor implements HttpInterceptor {
   ) {}
 
   intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
-    // Récupérer le token depuis sessionStorage OU localStorage, avec quelques clés alternatives
     const token =
       sessionStorage.getItem('session_token') ||
       localStorage.getItem('session_token') ||
       sessionStorage.getItem('token') ||
       localStorage.getItem('token') ||
       null;
-
-    try { console.debug('[AuthInterceptor] token present:', !!token); } catch (e) {}
 
     if (token) {
       request = request.clone({
@@ -39,23 +36,24 @@ export class AuthInterceptor implements HttpInterceptor {
 
     return next.handle(request).pipe(
       catchError((error: HttpErrorResponse) => {
+        // lazy inject to avoid circular deps
         const toast = this.injector.get(ToastService);
         const authService = this.injector.get(AuthService);
 
         if (error.status === 401) {
-          toast.showToast('Session expirée. Veuillez vous reconnecter.', 'warning');
-          try { authService.logout(); } catch(e) {}
-          try { this.router.navigate(['/login']); } catch(e) {}
+          try { toast.showToast('Session expirée. Veuillez vous reconnecter.', 'warning'); } catch {}
+          try { authService.logout(); } catch {}
+          try { this.router.navigate(['/login']); } catch {}
         } else if (error.status === 403) {
-          toast.showToast('Accès refusé.', 'error');
+          try { toast.showToast('Accès refusé.', 'error'); } catch {}
           const user = (authService as any)?.currentUserValue;
-          if (user) this.router.navigate([`/${user.role}/dashboard`]);
+          if (user) try { this.router.navigate([`/${user.role}/dashboard`]); } catch {}
         } else if (error.status === 404) {
-          toast.showToast('Ressource introuvable.', 'error');
+          try { toast.showToast('Ressource introuvable.', 'error'); } catch {}
         } else if (error.status === 500) {
-          toast.showToast('Erreur serveur. Veuillez réessayer plus tard.', 'error');
+          try { toast.showToast('Erreur serveur. Veuillez réessayer plus tard.', 'error'); } catch {}
         } else if (error.status === 0) {
-          toast.showToast('Impossible de se connecter au serveur.', 'error');
+          try { toast.showToast('Impossible de se connecter au serveur.', 'error'); } catch {}
         }
 
         return throwError(() => error);

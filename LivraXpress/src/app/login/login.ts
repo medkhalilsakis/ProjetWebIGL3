@@ -15,7 +15,7 @@ export class Login implements OnInit {
   loginForm: FormGroup;
   loading = false;
   submitted = false;
-  returnUrl: string = '';
+  returnUrl: string = '/';
   showPassword = false;
 
   constructor(
@@ -25,20 +25,33 @@ export class Login implements OnInit {
     private authService: AuthService,
     private toastService: ToastService
   ) {
-    // Rediriger si déjà connecté
-    if (this.authService.isAuthenticated) {
-      const role = this.authService.userRole;
-      this.router.navigate([`/${role}/dashboard`]);
-    }
-
+    // formulaire initial avec "rememberMe"
     this.loginForm = this.formBuilder.group({
       email: ['', [Validators.required, Validators.email]],
-      mot_de_passe: ['', [Validators.required, Validators.minLength(6)]]
+      mot_de_passe: ['', [Validators.required, Validators.minLength(6)]],
+      rememberMe: [false]
     });
   }
 
   ngOnInit(): void {
-    this.returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/';
+    // si déjà connecté, rediriger directement
+    try {
+      if (this.authService?.isAuthenticated) {
+        const role = this.authService.userRole || (this.authService.currentUserValue?.role) || 'client';
+        this.router.navigate([`/${role}/dashboard`], { replaceUrl: true });
+        return;
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    // returnUrl si fourni
+    const candidate = this.route.snapshot.queryParams['returnUrl'];
+    if (candidate && typeof candidate === 'string' && candidate.startsWith('/')) {
+      this.returnUrl = candidate;
+    } else {
+      this.returnUrl = '/';
+    }
   }
 
   get f() { return this.loginForm.controls; }
@@ -56,41 +69,53 @@ export class Login implements OnInit {
 
     this.loading = true;
 
-    this.authService.login(
-      this.f['email'].value,
-      this.f['mot_de_passe'].value
-    ).subscribe(
-      response => {
-        if (response.success) {
-          this.toastService.showToast('Connexion réussie !', 'success');
-          try {
-            // Ensure token is stored (fallback)
-            if (response.user && response.user.session_token && !sessionStorage.getItem('session_token')) {
-              sessionStorage.setItem('session_token', response.user.session_token);
-            }
-            console.debug('[Login] response.user:', response.user);
-          } catch (e) {}
+    const email = this.f['email'].value;
+    const mot_de_passe = this.f['mot_de_passe'].value;
+    const rememberMe = !!this.f['rememberMe'].value;
 
-          // Prefer the value from AuthService (guaranteed to be up-to-date), fallback to response.user
+    this.authService.login(email, mot_de_passe).subscribe(
+      response => {
+        this.loading = false;
+
+        if (response?.success) {
+          this.toastService.showToast('Connexion réussie !', 'success');
+
+          // store token depending on "remember me"
+          try {
+            const token = response?.user?.session_token || this.authService.currentToken;
+            if (token) {
+              if (rememberMe) {
+                localStorage.setItem('session_token', token);
+              } else {
+                sessionStorage.setItem('session_token', token);
+                // remove from localStorage if it existed
+                localStorage.removeItem('session_token');
+              }
+            }
+          } catch (e) {
+            // ignore storage errors (e.g. Safari private mode)
+          }
+
+          // Determine role (prefer AuthService current user)
           const current = this.authService.currentUserValue ?? response.user;
           const role = current?.role || 'client';
-          // Use replaceUrl to avoid leaving login in history
-          this.router.navigate([`/${role}/dashboard`], { replaceUrl: true });
-          
-          // Rediriger selon le rôle
-          
 
+          // If returnUrl set and safe (starts with /), go there, else default dashboard
+          const go = (this.returnUrl && this.returnUrl !== '/' && this.returnUrl.startsWith('/'))
+            ? this.returnUrl
+            : `/${role}/dashboard`;
+
+          this.router.navigate([go], { replaceUrl: true });
         } else {
-          this.toastService.showToast(response.message, 'error');
-          this.loading = false;
+          // backend success=false with message
+          const msg = response?.message || 'Email ou mot de passe incorrect';
+          this.toastService.showToast(msg, 'error');
         }
       },
-      error => {
-        this.toastService.showToast(
-          'Email ou mot de passe incorrect', 
-          'error'
-        );
+      err => {
         this.loading = false;
+        const serverMsg = err?.error?.message || 'Email ou mot de passe incorrect';
+        this.toastService.showToast(serverMsg, 'error');
       }
     );
   }

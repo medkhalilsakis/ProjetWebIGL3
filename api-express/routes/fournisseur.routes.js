@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const fs = require('fs');
 const { authMiddleware, checkRole } = require('../middleware/auth.middleware');
 
 // Protect all routes - user must be authenticated and have 'fournisseur' role
@@ -11,13 +13,51 @@ router.use(checkRole('fournisseur'));
 // Helper to get fournisseur_id from utilisateur_id
 async function getFournisseurId(utilisateur_id) {
   try {
-    const res = await db.query('SELECT id FROM fournisseurs WHERE utilisateur_id = $1', [utilisateur_id]);
+    const res = await db.query('SELECT id FROM fournisseurs WHERE utilisateur_id = $1 LIMIT 1', [utilisateur_id]);
     return res && res.rows.length > 0 ? res.rows[0].id : null;
   } catch (err) {
     console.error('Error getting fournisseur_id:', err);
     return null;
   }
 }
+
+// Helper to ensure default categories exist
+async function ensureDefaultCategories() {
+  try {
+    const defaultCategories = [
+      'Alimentation',
+      'Électronique',
+      'Vêtements',
+      'Livres',
+      'Jouets',
+      'Sports',
+      'Autres'
+    ];
+
+    for (const catName of defaultCategories) {
+      const exists = await db.query(
+        `SELECT id FROM categories WHERE LOWER(nom) = LOWER($1) LIMIT 1`,
+        [catName]
+      );
+
+      if (!exists?.rows?.length) {
+        const catId = uuidv4();
+        await db.query(
+          `INSERT INTO categories (id, nom) VALUES ($1, $2)`,
+          [catId, catName]
+        ).catch((e) => {
+          // ignore race conditions where another process created the category
+          if (e.code !== '23505') console.error('Error inserting default category:', e);
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Error ensuring default categories:', err);
+  }
+}
+
+// Initialize default categories on first load (fire-and-forget)
+ensureDefaultCategories();
 
 /**
  * GET /fournisseur/stats
@@ -43,60 +83,54 @@ router.get('/stats', async (req, res) => {
       });
     }
 
-    // Get orders count for different time periods
+    // Build date boundaries (JS Date objects — PG will accept them via parameterized query)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const weekStart = new Date(today);
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    
+
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
     // Orders today
     const ordersToday = await db.query(
-      `SELECT COUNT(*) as count FROM commandes 
-       WHERE fournisseur_id = $1 AND DATE(date_commande) = DATE($2)`,
+      `SELECT COUNT(*) as count FROM commandes WHERE fournisseur_id = $1 AND DATE(date_commande) = DATE($2)`,
       [fournisseur_id, today]
     );
 
     // Orders this week
     const ordersWeek = await db.query(
-      `SELECT COUNT(*) as count FROM commandes 
-       WHERE fournisseur_id = $1 AND date_commande >= $2`,
+      `SELECT COUNT(*) as count FROM commandes WHERE fournisseur_id = $1 AND date_commande >= $2`,
       [fournisseur_id, weekStart]
     );
 
     // Orders this month
     const ordersMonth = await db.query(
-      `SELECT COUNT(*) as count FROM commandes 
-       WHERE fournisseur_id = $1 AND date_commande >= $2`,
+      `SELECT COUNT(*) as count FROM commandes WHERE fournisseur_id = $1 AND date_commande >= $2`,
       [fournisseur_id, monthStart]
     );
 
     // Revenue today
     const revenueToday = await db.query(
-      `SELECT COALESCE(SUM(montant_total), 0) as total FROM commandes 
-       WHERE fournisseur_id = $1 AND DATE(date_commande) = DATE($2)`,
+      `SELECT COALESCE(SUM(montant_total), 0) as total FROM commandes WHERE fournisseur_id = $1 AND DATE(date_commande) = DATE($2)`,
       [fournisseur_id, today]
     );
 
     // Revenue this week
     const revenueWeek = await db.query(
-      `SELECT COALESCE(SUM(montant_total), 0) as total FROM commandes 
-       WHERE fournisseur_id = $1 AND date_commande >= $2`,
+      `SELECT COALESCE(SUM(montant_total), 0) as total FROM commandes WHERE fournisseur_id = $1 AND date_commande >= $2`,
       [fournisseur_id, weekStart]
     );
 
     // Revenue this month
     const revenueMonth = await db.query(
-      `SELECT COALESCE(SUM(montant_total), 0) as total FROM commandes 
-       WHERE fournisseur_id = $1 AND date_commande >= $2`,
+      `SELECT COALESCE(SUM(montant_total), 0) as total FROM commandes WHERE fournisseur_id = $1 AND date_commande >= $2`,
       [fournisseur_id, monthStart]
     );
 
     // Supplier info for rating and prep time
     const supplierInfo = await db.query(
-      `SELECT note_moyenne, temps_preparation_moyen FROM fournisseurs WHERE id = $1`,
+      `SELECT note_moyenne, temps_preparation_moyen FROM fournisseurs WHERE id = $1 LIMIT 1`,
       [fournisseur_id]
     );
 
@@ -109,15 +143,15 @@ router.get('/stats', async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        ordersToday: parseInt(ordersToday.rows[0]?.count) || 0,
-        ordersWeek: parseInt(ordersWeek.rows[0]?.count) || 0,
-        ordersMonth: parseInt(ordersMonth.rows[0]?.count) || 0,
+        ordersToday: parseInt(ordersToday.rows[0]?.count, 10) || 0,
+        ordersWeek: parseInt(ordersWeek.rows[0]?.count, 10) || 0,
+        ordersMonth: parseInt(ordersMonth.rows[0]?.count, 10) || 0,
         revenueToday: parseFloat(revenueToday.rows[0]?.total) || 0,
         revenueWeek: parseFloat(revenueWeek.rows[0]?.total) || 0,
         revenueMonth: parseFloat(revenueMonth.rows[0]?.total) || 0,
         rating: parseFloat(supplierInfo.rows[0]?.note_moyenne) || 0,
-        avgPrepTime: parseInt(supplierInfo.rows[0]?.temps_preparation_moyen) || 0,
-        totalOrders: parseInt(totalOrders.rows[0]?.count) || 0
+        avgPrepTime: parseInt(supplierInfo.rows[0]?.temps_preparation_moyen, 10) || 0,
+        totalOrders: parseInt(totalOrders.rows[0]?.count, 10) || 0
       }
     });
   } catch (error) {
@@ -151,34 +185,86 @@ router.get('/produits', async (req, res) => {
     }
 
     const result = await db.query(
-      `SELECT id, nom, description, prix, prix_promotion, image_principale, stock, disponible
-       FROM produits 
-       WHERE fournisseur_id = $1 
+      `SELECT id, nom, description, prix, prix_promotion, image_principale, images_additionnelles, stock, disponible, categorie_id
+       FROM produits
+       WHERE fournisseur_id = $1
        ORDER BY id DESC`,
       [fournisseur_id]
     );
 
     res.status(200).json({
       success: true,
-      data: (result.rows || []).map(row => ({
-        id: row.id,
-        nom: row.nom,
-        description: row.description,
-        prix: parseFloat(row.prix),
-        quantite: row.stock,
-        status: row.disponible ? 'active' : 'out_of_stock',
-        categorie: 'food', // Default category - database doesn't store this
-        image: row.image_principale,
-        promotionPercent: row.prix_promotion ? Math.round(((row.prix - row.prix_promotion) / row.prix) * 100) : 0
-      }))
+      data: (result.rows || []).map(row => {
+        const prix = row.prix != null ? parseFloat(row.prix) : null;
+        const prixPromo = row.prix_promotion != null ? parseFloat(row.prix_promotion) : null;
+        const promotionPercent = (prix && prixPromo && prix > 0) ? Math.round((1 - prixPromo / prix) * 100) : 0;
+
+        return {
+          id: row.id,
+          nom: row.nom,
+          description: row.description,
+          prix: prix,
+          prix_promotion: prixPromo,
+          quantite: row.stock,
+          status: row.disponible ? 'active' : 'out_of_stock',
+          categorie_id: row.categorie_id || null,
+          image: row.image_principale || null,
+          promotionPercent
+        };
+      })
     });
   } catch (error) {
     console.error('Error fetching products:', error);
-    // Return empty array instead of error so dashboard doesn't break
-    res.status(200).json({
-      success: true,
-      data: []
-    });
+    res.status(200).json({ success: true, data: [] });
+  }
+});
+
+/**
+ * POST /fournisseur/upload-images
+ * Upload product images (main and additional)
+ * Files: image_principale (required), images_additionnelles[] (optional)
+ * Note: requires middleware such as express-fileupload or multer configured in app.js
+ */
+router.post('/upload-images', async (req, res) => {
+  try {
+    const uploadDir = path.join(__dirname, '../uploads/products');
+
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+    const uploadedImages = { mainImage: null, additionalImages: [] };
+
+    // Handle main image (mandatory)
+    if (!req.files || !req.files.image_principale) {
+      return res.status(400).json({ success: false, message: 'Main image is required' });
+    }
+
+    const mainImage = req.files.image_principale;
+    if (Array.isArray(mainImage)) {
+      return res.status(400).json({ success: false, message: 'Only one main image allowed' });
+    }
+
+    const sanitize = (name) => name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const mainFilename = `${uuidv4()}_${Date.now()}_${sanitize(mainImage.name || 'main')}`;
+    const mainPath = path.join(uploadDir, mainFilename);
+    await mainImage.mv(mainPath);
+    uploadedImages.mainImage = `/uploads/products/${mainFilename}`;
+
+    // Handle additional images (optional) - support either key 'images_additionnelles' or array key
+    let additionalImages = req.files['images_additionnelles'] || req.files['images_additionnelles[]'] || [];
+    if (additionalImages && !Array.isArray(additionalImages)) additionalImages = [additionalImages];
+
+    for (const img of additionalImages) {
+      if (uploadedImages.additionalImages.length >= 5) break;
+      const filename = `${uuidv4()}_${Date.now()}_${sanitize(img.name || 'add')}`;
+      const filepath = path.join(uploadDir, filename);
+      await img.mv(filepath);
+      uploadedImages.additionalImages.push(`/uploads/products/${filename}`);
+    }
+
+    res.status(200).json({ success: true, data: uploadedImages });
+  } catch (error) {
+    console.error('Error uploading images:', error);
+    res.status(500).json({ success: false, message: 'Error uploading images' });
   }
 });
 
@@ -188,64 +274,42 @@ router.get('/produits', async (req, res) => {
  */
 router.post('/produits', async (req, res) => {
   try {
-    // Look up fournisseur_id from utilisateur_id
-    const userRes = await db.query(
-      'SELECT id FROM fournisseurs WHERE utilisateur_id = $1',
-      [req.user.user_id]
-    );
-    if (!userRes || userRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Fournisseur not found' });
-    }
-    const fournisseur_id = userRes.rows[0].id;
-    const { nom, description, prix, quantite, status, categorie, promotionPercent, image_principale } = req.body;
+    const fournisseur_id = await getFournisseurId(req.user.user_id);
+    if (!fournisseur_id) return res.status(404).json({ success: false, message: 'Fournisseur non trouvé' });
 
-    if (!nom || prix === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: 'Product name and price are required'
-      });
-    }
+    const {
+      nom,
+      description = '',
+      prix,
+      quantite,
+      categorie_id,
+      image = null
+    } = req.body;
 
-    // Use a default image if none provided
-    const imageUrl = image_principale || 'https://via.placeholder.com/200';
-    const stock = quantite || 0;
-    const disponible = status !== 'out_of_stock';
-    const prixPromotion = promotionPercent ? (prix * (100 - promotionPercent)) / 100 : null;
+    if (!nom?.trim()) return res.status(400).json({ success: false, message: 'Le nom du produit est obligatoire' });
+    const prixNum = prix != null ? parseFloat(prix) : null;
+    if (!prixNum || prixNum <= 0) return res.status(400).json({ success: false, message: 'Le prix doit être positif' });
+    const quant = quantite !== undefined ? parseInt(quantite, 10) : 0;
+    if (quant < 0) return res.status(400).json({ success: false, message: 'La quantité doit être ≥ 0' });
+    if (!categorie_id) return res.status(400).json({ success: false, message: 'La catégorie est obligatoire' });
 
-    // Ensure we provide a categorie_id to satisfy NOT NULL constraint if present in schema
-    const categorieId = uuidv4();
+    const produitId = uuidv4();
+
     const result = await db.query(
-      `INSERT INTO produits 
-       (fournisseur_id, nom, description, prix, prix_promotion, image_principale, 
-        images_additionnelles, stock, disponible, categorie, categorie_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       RETURNING *`,
-      [fournisseur_id, nom, description || null, prix, prixPromotion || null, imageUrl, 
-       '[]', stock, disponible, categorie || 'autre', categorieId]
+      `INSERT INTO produits
+       (id, fournisseur_id, nom, description, prix, stock, disponible, categorie_id, image_principale)
+       VALUES ($1, $2, $3, $4, $5, $6, true, $7, $8)
+       RETURNING id, nom, prix, stock, categorie_id`,
+      [produitId, fournisseur_id, nom.trim(), description.trim(), prixNum, quant, categorie_id, image]
     );
 
-    // Return simplified format for frontend
-    res.status(201).json({
-      success: true,
-      message: 'Product created successfully',
-      data: {
-        id: result.rows[0].id,
-        nom: result.rows[0].nom,
-        description: result.rows[0].description,
-        prix: result.rows[0].prix,
-        quantite: result.rows[0].stock,
-        status: disponible ? 'active' : 'out_of_stock',
-        categorie: categorie || 'food',
-        image: result.rows[0].image_principale,
-        promotionPercent: promotionPercent || 0
-      }
-    });
+    res.status(201).json({ success: true, message: 'Produit ajouté avec succès', data: result.rows[0] });
   } catch (error) {
     console.error('Error creating product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating product: ' + error.message
-    });
+    if (error.code === '23503') {
+      return res.status(400).json({ success: false, message: 'Catégorie invalide. Vérifiez que l\'ID existe.' });
+    }
+    res.status(500).json({ success: false, message: 'Erreur lors de l\'ajout du produit', details: error.message });
   }
 });
 
@@ -255,71 +319,65 @@ router.post('/produits', async (req, res) => {
  */
 router.put('/produits/:id', async (req, res) => {
   try {
-    // Look up fournisseur_id from utilisateur_id
-    const userRes = await db.query(
-      'SELECT id FROM fournisseurs WHERE utilisateur_id = $1',
-      [req.user.user_id]
-    );
-    if (!userRes || userRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Fournisseur not found' });
-    }
-    const fournisseur_id = userRes.rows[0].id;
+    const fournisseur_id = await getFournisseurId(req.user.user_id);
+    if (!fournisseur_id) return res.status(404).json({ success: false, message: 'Fournisseur not found' });
+
     const product_id = req.params.id;
-    const { nom, description, prix, quantite, status, categorie, promotionPercent } = req.body;
+    const { nom, description, prix, quantite, status, categorie_id, promotionPercent } = req.body;
 
     // Verify product belongs to this supplier
-    const verify = await db.query(
-      `SELECT id FROM produits WHERE id = $1 AND fournisseur_id = $2`,
-      [product_id, fournisseur_id]
-    );
+    const verify = await db.query(`SELECT id FROM produits WHERE id = $1 AND fournisseur_id = $2`, [product_id, fournisseur_id]);
+    if (verify.rows.length === 0) return res.status(404).json({ success: false, message: 'Product not found' });
 
-    if (verify.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
+    const prixNum = prix != null ? parseFloat(prix) : null;
+    let prixPromotion = null;
+    if (prixNum != null && promotionPercent != null) {
+      const pct = parseFloat(promotionPercent);
+      if (!isNaN(pct) && pct > 0 && pct < 100) {
+        prixPromotion = (prixNum * (100 - pct)) / 100;
+        // sécurité : éviter prix_promotion égal ou supérieur au prix de base
+        if (prixPromotion >= prixNum) prixPromotion = prixNum * 0.99;
+      } else {
+        prixPromotion = null;
+      }
     }
 
-    // Calculate promotion price if needed
-    const prixPromotion = prix && promotionPercent ? (prix * (100 - promotionPercent)) / 100 : null;
-    const disponible = status !== 'out_of_stock';
-    const stock = quantite !== undefined ? quantite : null;
+    const disponible = typeof status !== 'undefined' ? (status !== 'out_of_stock') : null;
+    const stock = typeof quantite !== 'undefined' ? parseInt(quantite, 10) : null;
 
     const result = await db.query(
-      `UPDATE produits 
-       SET nom = COALESCE($1, nom), 
-           description = COALESCE($2, description), 
-           prix = COALESCE($3, prix), 
+      `UPDATE produits
+       SET nom = COALESCE($1, nom),
+           description = COALESCE($2, description),
+           prix = COALESCE($3, prix),
            prix_promotion = $4,
-           stock = COALESCE($5, stock), 
-           disponible = COALESCE($6, disponible)
+           stock = COALESCE($5, stock),
+           disponible = COALESCE($6, disponible),
+           categorie_id = COALESCE($9, categorie_id)
        WHERE id = $7 AND fournisseur_id = $8
        RETURNING *`,
-      [nom || null, description || null, prix || null, prixPromotion, stock, disponible !== null ? disponible : null, product_id, fournisseur_id]
+      [nom || null, description || null, prixNum || null, prixPromotion, stock, disponible, product_id, fournisseur_id, categorie_id || null]
     );
 
-    // Return simplified format
+    const updated = result.rows[0];
     res.status(200).json({
       success: true,
       message: 'Product updated successfully',
       data: {
-        id: result.rows[0].id,
-        nom: result.rows[0].nom,
-        description: result.rows[0].description,
-        prix: parseFloat(result.rows[0].prix),
-        quantite: result.rows[0].stock,
-        status: result.rows[0].disponible ? 'active' : 'out_of_stock',
-        categorie: categorie || 'food',
-        image: result.rows[0].image_principale,
+        id: updated.id,
+        nom: updated.nom,
+        description: updated.description,
+        prix: updated.prix != null ? parseFloat(updated.prix) : null,
+        quantite: updated.stock,
+        status: updated.disponible ? 'active' : 'out_of_stock',
+        categorie_id: updated.categorie_id || null,
+        image: updated.image_principale || null,
         promotionPercent: promotionPercent || 0
       }
     });
   } catch (error) {
     console.error('Error updating product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating product'
-    });
+    res.status(500).json({ success: false, message: 'Error updating product' });
   }
 });
 
@@ -329,39 +387,19 @@ router.put('/produits/:id', async (req, res) => {
  */
 router.delete('/produits/:id', async (req, res) => {
   try {
-    // Look up fournisseur_id from utilisateur_id
-    const userRes = await db.query(
-      'SELECT id FROM fournisseurs WHERE utilisateur_id = $1',
-      [req.user.user_id]
-    );
-    if (!userRes || userRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Fournisseur not found' });
-    }
-    const fournisseur_id = userRes.rows[0].id;
+    const fournisseur_id = await getFournisseurId(req.user.user_id);
+    if (!fournisseur_id) return res.status(404).json({ success: false, message: 'Fournisseur not found' });
+
     const product_id = req.params.id;
 
-    const result = await db.query(
-      `DELETE FROM produits WHERE id = $1 AND fournisseur_id = $2 RETURNING id`,
-      [product_id, fournisseur_id]
-    );
+    const result = await db.query(`DELETE FROM produits WHERE id = $1 AND fournisseur_id = $2 RETURNING id`, [product_id, fournisseur_id]);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Product not found' });
 
-    res.status(200).json({
-      success: true,
-      message: 'Product deleted successfully'
-    });
+    res.status(200).json({ success: true, message: 'Product deleted successfully' });
   } catch (error) {
     console.error('Error deleting product:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting product'
-    });
+    res.status(500).json({ success: false, message: 'Error deleting product' });
   }
 });
 
@@ -371,36 +409,18 @@ router.delete('/produits/:id', async (req, res) => {
  */
 router.patch('/produits/:id', async (req, res) => {
   try {
-    // Look up fournisseur_id from utilisateur_id
-    const userRes = await db.query(
-      'SELECT id FROM fournisseurs WHERE utilisateur_id = $1',
-      [req.user.user_id]
-    );
-    if (!userRes || userRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Fournisseur not found' });
-    }
-    const fournisseur_id = userRes.rows[0].id;
+    const fournisseur_id = await getFournisseurId(req.user.user_id);
+    if (!fournisseur_id) return res.status(404).json({ success: false, message: 'Fournisseur not found' });
+
     const product_id = req.params.id;
 
-    // Get current disponible status and toggle it
-    const current = await db.query(
-      `SELECT disponible FROM produits WHERE id = $1 AND fournisseur_id = $2`,
-      [product_id, fournisseur_id]
-    );
-
-    if (current.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
+    // Get current disponible status and toggle it (ensure supplier owns it)
+    const current = await db.query(`SELECT disponible FROM produits WHERE id = $1 AND fournisseur_id = $2`, [product_id, fournisseur_id]);
+    if (current.rows.length === 0) return res.status(404).json({ success: false, message: 'Product not found' });
 
     const newAvailability = !current.rows[0].disponible;
 
-    const result = await db.query(
-      `UPDATE produits SET disponible = $1 WHERE id = $2 RETURNING *`,
-      [newAvailability, product_id]
-    );
+    const result = await db.query(`UPDATE produits SET disponible = $1, updated_at = NOW() WHERE id = $2 AND fournisseur_id = $3 RETURNING *`, [newAvailability, product_id, fournisseur_id]);
 
     res.status(200).json({
       success: true,
@@ -413,10 +433,7 @@ router.patch('/produits/:id', async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating product status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating product status'
-    });
+    res.status(500).json({ success: false, message: 'Error updating product status' });
   }
 });
 
@@ -427,14 +444,12 @@ router.patch('/produits/:id', async (req, res) => {
 router.get('/commandes', async (req, res) => {
   try {
     const fournisseur_id = await getFournisseurId(req.user.user_id);
-    if (!fournisseur_id) {
-      return res.status(200).json({ success: true, data: [] });
-    }
-    const limit = req.query.limit || 50;
+    if (!fournisseur_id) return res.status(200).json({ success: true, data: [] });
+
+    const limit = Math.min(1000, parseInt(req.query.limit, 10) || 50);
 
     const result = await db.query(
-      `SELECT c.*, 
-              u.nom_complet as client_nom
+      `SELECT c.*, u.nom_complet as client_nom
        FROM commandes c
        LEFT JOIN utilisateurs u ON c.client_id = u.id
        WHERE c.fournisseur_id = $1
@@ -447,23 +462,19 @@ router.get('/commandes', async (req, res) => {
       success: true,
       data: (result.rows || []).map(row => ({
         id: row.id,
-        numero_suivi: row.id.substring(0, 8).toUpperCase(),
+        numero_suivi: (row.id || '').substring(0, 8).toUpperCase(),
         statut: row.statut || 'en_attente',
-        montant_total: parseFloat(row.montant_total),
+        montant_total: row.montant_total != null ? parseFloat(row.montant_total) : 0,
         client_nom: row.client_nom || 'Unknown',
         lignes_commande: [],
-        instructions_speciales: row.instructions_speciales,
+        instructions_speciales: row.instructions_speciales || null,
         created_at: row.date_commande,
-        estimated_pickup: row.estimated_pickup
+        estimated_pickup: row.estimated_pickup || null
       }))
     });
   } catch (error) {
     console.error('Error fetching orders:', error);
-    // Return empty array instead of error
-    res.status(200).json({
-      success: true,
-      data: []
-    });
+    res.status(200).json({ success: true, data: [] });
   }
 });
 
@@ -473,46 +484,24 @@ router.get('/commandes', async (req, res) => {
  */
 router.patch('/commandes/:id', async (req, res) => {
   try {
-    const fournisseur_id = req.user.user_id;
+    const fournisseur_id = await getFournisseurId(req.user.user_id);
+    if (!fournisseur_id) return res.status(404).json({ success: false, message: 'Fournisseur not found' });
+
     const order_id = req.params.id;
     const { statut } = req.body;
 
-    if (!statut) {
-      return res.status(400).json({
-        success: false,
-        message: 'Status is required'
-      });
-    }
+    if (!statut) return res.status(400).json({ success: false, message: 'Status is required' });
 
     // Verify order belongs to this supplier
-    const verify = await db.query(
-      `SELECT id FROM commandes WHERE id = $1 AND fournisseur_id = $2`,
-      [order_id, fournisseur_id]
-    );
+    const verify = await db.query(`SELECT id FROM commandes WHERE id = $1 AND fournisseur_id = $2`, [order_id, fournisseur_id]);
+    if (verify.rows.length === 0) return res.status(404).json({ success: false, message: 'Order not found' });
 
-    if (verify.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Order not found'
-      });
-    }
+    const result = await db.query(`UPDATE commandes SET statut = $1, updated_at = NOW() WHERE id = $2 AND fournisseur_id = $3 RETURNING *`, [statut, order_id, fournisseur_id]);
 
-    const result = await db.query(
-      `UPDATE commandes SET statut = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
-      [statut, order_id]
-    );
-
-    res.status(200).json({
-      success: true,
-      message: 'Order status updated',
-      data: result.rows[0]
-    });
+    res.status(200).json({ success: true, message: 'Order status updated', data: result.rows[0] });
   } catch (error) {
     console.error('Error updating order status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating order status'
-    });
+    res.status(500).json({ success: false, message: 'Error updating order status' });
   }
 });
 
@@ -523,20 +512,11 @@ router.patch('/commandes/:id', async (req, res) => {
 router.post('/commandes/:id/notifier-courrier', async (req, res) => {
   try {
     const order_id = req.params.id;
-
-    // TODO: Implement notification logic
-    // This would typically send a message to courier service or emit WebSocket event
-
-    res.status(200).json({
-      success: true,
-      message: 'Courier notified successfully'
-    });
+    // TODO: Implement notification logic (websocket, push, external API)
+    res.status(200).json({ success: true, message: 'Courier notified successfully' });
   } catch (error) {
     console.error('Error notifying courier:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error notifying courier'
-    });
+    res.status(500).json({ success: false, message: 'Error notifying courier' });
   }
 });
 
@@ -547,29 +527,20 @@ router.post('/commandes/:id/notifier-courrier', async (req, res) => {
 router.get('/alertes', async (req, res) => {
   try {
     const fournisseur_id = await getFournisseurId(req.user.user_id);
-    if (!fournisseur_id) {
-      return res.status(200).json({ success: true, data: [] });
-    }
+    if (!fournisseur_id) return res.status(200).json({ success: true, data: [] });
 
     // Get low stock alerts
     const lowStock = await db.query(
       `SELECT id, 'stock' as type, 'Low stock: ' || nom as message, 'warning' as severity, NOW() as timestamp
-       FROM produits 
+       FROM produits
        WHERE fournisseur_id = $1 AND stock < 10`,
       [fournisseur_id]
     );
 
-    res.status(200).json({
-      success: true,
-      data: lowStock.rows || []
-    });
+    res.status(200).json({ success: true, data: lowStock.rows || [] });
   } catch (error) {
     console.error('Error fetching alerts:', error);
-    // Return empty array instead of error
-    res.status(200).json({
-      success: true,
-      data: []
-    });
+    res.status(200).json({ success: true, data: [] });
   }
 });
 
@@ -580,42 +551,23 @@ router.get('/alertes', async (req, res) => {
 router.get('/finance', async (req, res) => {
   try {
     const fournisseur_id = await getFournisseurId(req.user.user_id);
-    if (!fournisseur_id) {
-      return res.status(200).json({ success: true, data: { availableBalance: 0, totalCommission: 0, paymentHistory: [] } });
-    }
+    if (!fournisseur_id) return res.status(200).json({ success: true, data: { availableBalance: 0, totalCommission: 0, paymentHistory: [] } });
 
-    // Get supplier balance and commission info - using mock data since columns don't exist yet
-    // TODO: Add solde_disponible and commission_total columns to fournisseurs table
-    const financeInfo = {
-      rows: [{ solde_disponible: 0, commission_total: 0 }]
-    };
-
-    // Get payment history - skip created_at if column doesn't exist
-    const paymentHistory = await db.query(
-      `SELECT id, montant, mode_paiement, statut FROM paiements 
-       WHERE fournisseur_id = $1 ORDER BY id DESC LIMIT 20`,
-      [fournisseur_id]
-    );
+    // TODO: Add solde_disponible and commission_total columns to fournisseurs table and link paiements to fournisseurs
+    const financeInfo = { rows: [{ solde_disponible: 0, commission_total: 0 }] };
+    const paymentHistory = [];
 
     res.status(200).json({
       success: true,
       data: {
         availableBalance: financeInfo.rows[0]?.solde_disponible || 0,
         totalCommission: financeInfo.rows[0]?.commission_total || 0,
-        paymentHistory: paymentHistory.rows || []
+        paymentHistory: paymentHistory || []
       }
     });
   } catch (error) {
     console.error('Error fetching finance data:', error);
-    // Return empty data instead of error
-    res.status(200).json({
-      success: true,
-      data: {
-        availableBalance: 0,
-        totalCommission: 0,
-        paymentHistory: []
-      }
-    });
+    res.status(200).json({ success: true, data: { availableBalance: 0, totalCommission: 0, paymentHistory: [] } });
   }
 });
 
@@ -626,37 +578,24 @@ router.get('/finance', async (req, res) => {
 router.post('/payout', async (req, res) => {
   try {
     const fournisseur_id = await getFournisseurId(req.user.user_id);
-    if (!fournisseur_id) {
-      return res.status(404).json({ success: false, message: 'Fournisseur not found' });
-    }
+    if (!fournisseur_id) return res.status(404).json({ success: false, message: 'Fournisseur not found' });
+
     const { montant } = req.body;
+    const montantNum = montant != null ? parseFloat(montant) : null;
+    if (!montantNum || montantNum <= 0) return res.status(400).json({ success: false, message: 'Valid amount is required' });
 
-    if (!montant || montant <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid amount is required'
-      });
-    }
-
-    // Insert payout request
+    const payoutId = uuidv4();
     const result = await db.query(
-      `INSERT INTO paiements (fournisseur_id, montant, mode_paiement, statut, created_at)
+      `INSERT INTO paiements (id, montant, mode_paiement, statut, created_at)
        VALUES ($1, $2, 'payout', 'pending', NOW())
        RETURNING *`,
-      [fournisseur_id, montant]
+      [payoutId, montantNum]
     );
 
-    res.status(201).json({
-      success: true,
-      message: 'Payout request submitted',
-      data: result.rows[0]
-    });
+    res.status(201).json({ success: true, message: 'Payout request submitted', data: result.rows[0] });
   } catch (error) {
     console.error('Error requesting payout:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error requesting payout'
-    });
+    res.status(500).json({ success: false, message: 'Error requesting payout' });
   }
 });
 
@@ -667,12 +606,10 @@ router.post('/payout', async (req, res) => {
 router.get('/produits/top', async (req, res) => {
   try {
     const fournisseur_id = await getFournisseurId(req.user.user_id);
-    if (!fournisseur_id) {
-      return res.status(200).json({ success: true, data: [] });
-    }
+    if (!fournisseur_id) return res.status(200).json({ success: true, data: [] });
 
     const result = await db.query(
-      `SELECT p.id, p.nom, COUNT(lc.id) as sales
+      `SELECT p.id, p.nom, COALESCE(COUNT(lc.id),0) as sales
        FROM produits p
        LEFT JOIN lignes_commande lc ON p.id = lc.produit_id
        LEFT JOIN commandes c ON lc.commande_id = c.id AND c.fournisseur_id = $1
@@ -688,17 +625,13 @@ router.get('/produits/top', async (req, res) => {
       data: (result.rows || []).map(row => ({
         id: row.id,
         name: row.nom,
-        sales: row.sales || 0,
+        sales: parseInt(row.sales, 10) || 0,
         trend: 'up'
       }))
     });
   } catch (error) {
     console.error('Error fetching top products:', error);
-    // Return empty array instead of error
-    res.status(200).json({
-      success: true,
-      data: []
-    });
+    res.status(200).json({ success: true, data: [] });
   }
 });
 
@@ -709,22 +642,14 @@ router.get('/produits/top', async (req, res) => {
 router.post('/schedule', async (req, res) => {
   try {
     const fournisseur_id = await getFournisseurId(req.user.user_id);
-    if (!fournisseur_id) {
-      return res.status(404).json({ success: false, message: 'Fournisseur not found' });
-    }
-    const { openingTime, closingTime } = req.body;
+    if (!fournisseur_id) return res.status(404).json({ success: false, message: 'Fournisseur not found' });
 
-    // TODO: Implement schedule update in database
-    res.status(200).json({
-      success: true,
-      message: 'Schedule updated successfully'
-    });
+    const { openingTime, closingTime } = req.body;
+    // TODO: Persist schedule to DB (e.g. table opening_hours)
+    res.status(200).json({ success: true, message: 'Schedule updated successfully' });
   } catch (error) {
     console.error('Error updating schedule:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating schedule'
-    });
+    res.status(500).json({ success: false, message: 'Error updating schedule' });
   }
 });
 
@@ -735,23 +660,14 @@ router.post('/schedule', async (req, res) => {
 router.post('/availability', async (req, res) => {
   try {
     const fournisseur_id = await getFournisseurId(req.user.user_id);
-    if (!fournisseur_id) {
-      return res.status(404).json({ success: false, message: 'Fournisseur not found' });
-    }
-    const { isOpen } = req.body;
+    if (!fournisseur_id) return res.status(404).json({ success: false, message: 'Fournisseur not found' });
 
-    // TODO: Implement availability toggle in database
-    res.status(200).json({
-      success: true,
-      message: 'Availability updated successfully',
-      data: { isOpen }
-    });
+    const { isOpen } = req.body;
+    // TODO: Persist availability to fournisseurs table (e.g. column is_open)
+    res.status(200).json({ success: true, message: 'Availability updated successfully', data: { isOpen } });
   } catch (error) {
     console.error('Error updating availability:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating availability'
-    });
+    res.status(500).json({ success: false, message: 'Error updating availability' });
   }
 });
 

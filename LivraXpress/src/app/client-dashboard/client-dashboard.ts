@@ -1,356 +1,692 @@
-// frontend/src/app/features/client/dashboard/dashboard.component.ts
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { CommonModule } from '@angular/common';
+import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
+import { Router } from '@angular/router';
+import { interval, Subscription, of } from 'rxjs';
+import { catchError, map, switchMap } from 'rxjs/operators';
 import { AuthService } from '../services/authentification';
 import { ToastService } from '../services/toast';
-import { Router } from '@angular/router';
-import { CommonModule } from '@angular/common';
-import { interval, Subscription } from 'rxjs';
+import { NotificationService, Notification } from '../services/notification';
 
-interface DashboardStats {
-  total_commandes: number;
-  commandes_en_cours: number;
-  commandes_livrees: number;
-  montant_total_depense: number;
-  montant_economise: number;
-  temps_economise: number;
+interface Order {
+  id: string;
+  numero_suivi?: string;
+  fournisseur?: string;
+  montant_total: number;
+  statut: 'en_attente' | 'en_preparation' | 'pret_pour_livraison' | 'en_livraison' | 'livree' | 'annulee';
+  date_commande?: string;
+  date_livraison_reelle?: string;
+  adresse_livraison_id?: string;
+  instructions_speciales?: string;
+  livreur_nom?: string;
+  produits?: OrderItem[];
+  frais_service?: number;
+  frais_livraison?: number;
+  mode_paiement?: string;
+}
+
+interface OrderItem {
+  produit_id: string;
+  nom: string;
+  quantite: number;
+  prix_unitaire: number;
+}
+
+interface Address {
+  id: string;
+  rue: string;
+  ville: string;
+  code_postal: string;
+  complement?: string;
+  est_principale: boolean;
+  libelle?: string;
+}
+
+interface PaymentMethod {
+  id: string;
+  type: 'carte' | 'portefeuille' | 'especes';
+  numero?: string;
+  nom?: string;
+  expiration?: string;
+  est_par_defaut: boolean;
+}
+
+interface Supplier {
+  id: string;
+  nom_entreprise: string;
+  type_fournisseur: string;
+  photo_couverture?: string;
+  note_moyenne?: number;
+  nombre_avis?: number;
+  temps_preparation_moyen?: number;
+  frais_livraison?: number;
+  distance?: number;
 }
 
 interface LoyaltyLevel {
   level: string;
-  icon: string;
+  points: number;
   nextLevel: string;
+  pointsNeeded: number;
   progress: number;
 }
 
-interface Notification {
+interface SupportTicket {
   id: string;
+  sujet: string;
   message: string;
-  type: 'order' | 'promotion' | 'delivery' | 'achievement';
-  timestamp: Date;
-}
-
-interface Driver {
-  id: string;
-  nom: string;
-  avatar: string;
-  stats: {
-    ordersDelivered: number;
-    satisfaction: number;
-    vehicle: string;
-  };
-  message?: string;
-}
-
-interface ActiveOrder {
-  id: string;
-  numero_suivi: string;
-  status: 'preparation' | 'pickup' | 'en_route' | 'delivered';
-  estimatedArrival: Date;
-  driver: Driver;
-  progress: number;
-  latitude: number;
-  longitude: number;
-  trafficCondition: 'light' | 'moderate' | 'heavy';
+  statut: 'ouvert' | 'en_cours' | 'resolu';
+  date_creation: string;
 }
 
 @Component({
   selector: 'app-client-dashboard',
+  standalone: true,
+  imports: [CommonModule, FormsModule, ReactiveFormsModule],
   templateUrl: './client-dashboard.html',
   styleUrls: ['./client-dashboard.css'],
-  imports: [CommonModule]
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ClientDashboardComponent implements OnInit, OnDestroy {
-  loading = true;
-  activeTab: 'home' | 'tracking' | 'history' | 'loyalty' | 'payments' = 'home';
-  stats: DashboardStats = {
-    total_commandes: 0,
-    commandes_en_cours: 0,
-    commandes_livrees: 0,
-    montant_total_depense: 0,
-    montant_economise: 0,
-    temps_economise: 0
+  private apiUrl = 'http://localhost:3000/api';
+
+  activeTab:
+    | 'accueil'
+    | 'commande_en_cours'
+    | 'historique'
+    | 'recommandations'
+    | 'preferences'
+    | 'portefeuille'
+    | 'support'
+    | 'parametres'
+    | 'fidelite'
+    | 'notifications' = 'accueil';
+
+  // User info
+  currentUser: any = null;
+  profileImageFile: File | null = null;
+
+  // Active order tracking
+  activeOrder: Order | null = null;
+  driverLocation: { lat: number; lng: number } | null = null;
+  etaMinutes: number = 0;
+
+  // Orders history
+  orders: Order[] = [];
+  ordersLoading = false;
+  orderFilter: 'toutes' | 'livrees' | 'annulees' = 'toutes';
+  dateFilter: string = '';
+  categoryFilter: string = '';
+
+  // Addresses
+  addresses: Address[] = [];
+  addressForm!: FormGroup;
+  showAddressForm = false;
+
+  // Payment methods
+  paymentMethods: PaymentMethod[] = [];
+  paymentForm!: FormGroup;
+  showPaymentForm = false;
+
+  // Recommendations
+  recommendedSuppliers: Supplier[] = [];
+  promotions: any[] = [];
+  themes: string[] = ['Vegan', 'Tendances', 'Livraison express', 'Bon marché'];
+
+  // Preferences
+  preferencesForm!: FormGroup;
+  allergens: string[] = ['Gluten', 'Lactose', 'Arachides', 'Fruits de mer', 'Œufs'];
+  selectedAllergens: string[] = [];
+  dietaryPreferences: string[] = ['Végétarien', 'Végétalien', 'Sans gluten', 'Halal', 'Casher'];
+  selectedDietary: string[] = [];
+
+  // Wallet
+  walletBalance: number = 0;
+  promoCode = '';
+  paymentHistory: any[] = [];
+
+  // Support
+  supportForm!: FormGroup;
+  tickets: SupportTicket[] = [];
+  chatMessages: { from: 'client' | 'support'; message: string; at: Date }[] = [];
+  chatDraft = '';
+
+  // Loyalty
+  loyalty: LoyaltyLevel = {
+    level: 'Bronze',
+    points: 250,
+    nextLevel: 'Argent',
+    pointsNeeded: 500,
+    progress: 50
   };
-  
-  recentCommandes: any[] = [];
-  fournisseursFavoris: any[] = [];
-  currentUser: any;
-  
-  // Loyalty & Gamification
-  loyaltyLevel: LoyaltyLevel = {
-    level: 'Silver',
-    icon: '⭐',
-    nextLevel: 'Gold',
-    progress: 65
-  };
-  badges = [
-    { name: 'Early Bird', icon: '🌅', achieved: true },
-    { name: 'Local Champion', icon: '🏆', achieved: true },
-    { name: 'Eco Warrior', icon: '🌱', achieved: false }
-  ];
-  
-  // Real-time tracking
-  activeOrder: ActiveOrder | null = null;
-  trackingStats = {
-    distanceTraveled: 0,
-    co2Saved: 0
-  };
-  
-  // Smart Notifications
+  rewards: any[] = [];
+  pointsHistory: any[] = [];
+
+  // Notifications
   notifications: Notification[] = [];
-  
-  // Smart Recommendations
-  recommendations: any[] = [];
-  
-  // Personalization
-  trackingStyle: 'minimalist' | 'gaming' | 'chill' = 'gaming';
-  
-  private updateSubscription?: Subscription;
+  unreadCount = 0;
+
+  // Settings
+  settingsForm!: FormGroup;
+  twoFactorEnabled = false;
+
+  private refreshSub?: Subscription;
 
   constructor(
     private http: HttpClient,
-    private authService: AuthService,
-    private toastService: ToastService,
-    private router: Router
+    private fb: FormBuilder,
+    private auth: AuthService,
+    private toast: ToastService,
+    private notifService: NotificationService,
+    private router: Router,
+    private cdr: ChangeDetectorRef
   ) {
-    this.currentUser = this.authService.currentUserValue;
+    this.currentUser = this.auth.currentUserValue;
   }
 
-  // Helper to include auth headers (fallback if interceptor is changed)
-  private getAuthOptions() {
-    return this.authService?.getAuthHeaders() || {};
+  goHome(): void {
+    this.router.navigate(['/']);
+  }
+
+  goProducts(): void {
+    this.router.navigate(['/produits']);
   }
 
   ngOnInit(): void {
-    this.loadDashboardData();
-    this.initializeRealtimeTracking();
-    this.loadSmartRecommendations();
+    this.initForms();
+    this.loadAll();
+    this.observeNotifications();
+
+    // Refresh active order every 10s
+    this.refreshSub = interval(10000).subscribe(() => {
+      if (this.activeOrder) this.loadActiveOrder();
+    });
   }
 
   ngOnDestroy(): void {
-    if (this.updateSubscription) {
-      this.updateSubscription.unsubscribe();
+    this.refreshSub?.unsubscribe();
+  }
+
+  private initForms(): void {
+    this.addressForm = this.fb.group({
+      rue: ['', Validators.required],
+      ville: ['', Validators.required],
+      code_postal: ['', Validators.required],
+      complement: [''],
+      libelle: [''],
+      est_principale: [false]
+    });
+
+    this.paymentForm = this.fb.group({
+      type: ['carte', Validators.required],
+      numero: [''],
+      nom: [''],
+      expiration: [''],
+      est_par_defaut: [false]
+    });
+
+    this.preferencesForm = this.fb.group({
+      horaires_preferes: [''],
+      notifications_email: [true],
+      notifications_sms: [false],
+      notifications_push: [true]
+    });
+
+    this.supportForm = this.fb.group({
+      sujet: ['', Validators.required],
+      message: ['', Validators.required]
+    });
+
+    this.settingsForm = this.fb.group({
+      nom_complet: ['', Validators.required],
+      telephone: [''],
+      email: ['', [Validators.required, Validators.email]],
+      mot_de_passe: [''],
+      mot_de_passe_confirme: ['']
+    });
+  }
+
+  private loadAll(): void {
+    this.loadActiveOrder();
+    this.loadOrders();
+    this.loadAddresses();
+    this.loadPaymentMethods();
+    this.loadRecommendations();
+    this.loadPreferences();
+    this.loadWallet();
+    this.loadTickets();
+    this.loadLoyalty();
+    this.loadSettings();
+  }
+
+  // ---------- Notifications ----------
+  private observeNotifications(): void {
+    this.notifService.notifications$.subscribe((n) => {
+      this.notifications = n || [];
+      this.cdr.markForCheck();
+    });
+    this.notifService.unreadCount$.subscribe((c) => {
+      this.unreadCount = c ?? 0;
+      this.cdr.markForCheck();
+    });
+    this.notifService.loadNotifications();
+  }
+
+  // ---------- Navigation ----------
+  switchTab(tab: ClientDashboardComponent['activeTab']): void {
+    this.activeTab = tab;
+    if (tab === 'historique') this.loadOrders();
+    if (tab === 'recommandations') this.loadRecommendations();
+    if (tab === 'support') this.loadTickets();
+    this.cdr.markForCheck();
+  }
+
+  // ---------- Profile & Image ----------
+  onProfileImageSelected(event: any): void {
+    const file = event?.target?.files?.[0];
+    if (file) {
+      this.profileImageFile = file;
+      this.uploadProfileImage();
     }
   }
 
-  loadDashboardData(): void {
-    this.loading = true;
-
-    // Charger les commandes récentes (endpoint existant)
-    this.http.get<any>(`http://localhost:3000/api/commandes?limit=5`, this.getAuthOptions())
-      .subscribe({
-        next: (response) => {
-          if (response.success && response.commandes) {
-            this.recentCommandes = response.commandes;
-            // Calculate stats from commandes
-            this.stats.total_commandes = response.commandes.length;
-            this.stats.commandes_livrees = response.commandes.filter((c: any) => c.statut === 'livree').length;
-            this.stats.commandes_en_cours = response.commandes.filter((c: any) => c.statut !== 'livree' && c.statut !== 'annulee').length;
-            this.stats.montant_total_depense = response.commandes.reduce((sum: number, c: any) => sum + (c.montant_total || 0), 0);
-            this.stats.montant_economise = Math.floor(this.stats.montant_total_depense * 0.15); // 15% assumed savings
-            this.stats.temps_economise = this.stats.total_commandes; // 1 hour per order assumed
-          }
-          this.loading = false;
-        },
-        error: (error) => {
-          console.error('Erreur chargement commandes:', error);
-          this.loading = false;
-          // Set default stats on error
-          this.stats = {
-            total_commandes: 0,
-            commandes_en_cours: 0,
-            commandes_livrees: 0,
-            montant_total_depense: 0,
-            montant_economise: 0,
-            temps_economise: 0
-          };
+  uploadProfileImage(): void {
+    if (!this.profileImageFile) return;
+    this.auth.uploadProfileImage(this.profileImageFile).subscribe({
+      next: (res) => {
+        if (res?.success) {
+          this.toast.showToast('Photo de profil mise à jour', 'success');
+          this.currentUser = this.auth.currentUserValue;
+          this.cdr.markForCheck();
         }
-      });
-
-    // Mock favorites data since endpoint may not exist
-    this.fournisseursFavoris = [
-      {
-        nom_entreprise: 'Pizza Palace',
-        photo_couverture: 'https://via.placeholder.com/300',
-        note_moyenne: 4.8,
-        nombre_avis: 245,
-        temps_preparation_moyen: 20,
-        frais_livraison: 2.99
       },
-      {
-        nom_entreprise: 'Burger King',
-        photo_couverture: 'https://via.placeholder.com/300',
-        note_moyenne: 4.5,
-        nombre_avis: 189,
-        temps_preparation_moyen: 15,
-        frais_livraison: 1.99
-      }
-    ];
+      error: () => this.toast.showToast('Erreur upload photo', 'error')
+    });
   }
 
-  getStatusBadgeClass(statut: string): string {
-    const classes: { [key: string]: string } = {
-      en_attente: 'badge-warning',
-      en_preparation: 'badge-info',
-      pret_pour_livraison: 'badge-info',
-      en_livraison: 'badge-info',
-      livree: 'badge-success',
-      annulee: 'badge-danger',
-      probleme: 'badge-danger'
-    };
-    return `badge ${classes[statut] || 'badge-info'}`;
+  resolveImage(url: string | null | undefined): string {
+    if (!url) return 'assets/default-avatar.png';
+    if (url.startsWith('http')) return url;
+    return `http://localhost:3000${url.startsWith('/') ? '' : '/'}${url}`;
+  }
+
+  // ---------- Active Order ----------
+  loadActiveOrder(): void {
+    this.http
+      .get<any>(`${this.apiUrl}/commandes?statut=en_preparation&limit=1`, this.auth.getAuthHeaders())
+      .pipe(
+        catchError(() => of({ success: false, commandes: [] }))
+      )
+      .subscribe((res) => {
+        const active = res?.commandes?.[0];
+        if (active && active.statut !== 'livree' && active.statut !== 'annulee') {
+          this.activeOrder = active;
+          this.loadOrderDetails(active.id);
+          this.simulateDriverLocation();
+        } else {
+          this.activeOrder = null;
+        }
+        this.cdr.markForCheck();
+      });
+  }
+
+  loadOrderDetails(orderId: string): void {
+    this.http
+      .get<any>(`${this.apiUrl}/commandes/${orderId}`, this.auth.getAuthHeaders())
+      .pipe(catchError(() => of({ success: false })))
+      .subscribe((res) => {
+        if (res?.success && res.commande) {
+          this.activeOrder = { ...this.activeOrder, ...res.commande };
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  simulateDriverLocation(): void {
+    // Simulate driver location updates
+    if (this.activeOrder) {
+      this.driverLocation = {
+        lat: 45.764043 + (Math.random() - 0.5) * 0.01,
+        lng: 4.835659 + (Math.random() - 0.5) * 0.01
+      };
+      this.etaMinutes = Math.floor(Math.random() * 20) + 5;
+    }
+  }
+
+  contactSupport(): void {
+    this.activeTab = 'support';
+    this.supportForm.patchValue({
+      sujet: `Commande #${this.activeOrder?.id?.substring(0, 8)}`,
+      message: ''
+    });
+    this.cdr.markForCheck();
+  }
+
+  // ---------- Orders History ----------
+  loadOrders(): void {
+    this.ordersLoading = true;
+    let params = new HttpParams().set('limit', '50');
+    if (this.orderFilter !== 'toutes') {
+      params = params.set('statut', this.orderFilter === 'livrees' ? 'livree' : 'annulee');
+    }
+
+    this.http
+      .get<any>(`${this.apiUrl}/commandes`, { params, ...this.auth.getAuthHeaders() })
+      .pipe(
+        catchError(() => {
+          this.orders = [];
+          this.ordersLoading = false;
+          this.cdr.markForCheck();
+          return of({ success: false, commandes: [] });
+        })
+      )
+      .subscribe((res) => {
+        this.orders = res?.commandes || [];
+        this.ordersLoading = false;
+        this.cdr.markForCheck();
+      });
+  }
+
+  reorder(order: Order): void {
+    this.toast.showToast('Commande ajoutée au panier', 'success');
+    // Navigate to products page with pre-filled cart
+  }
+
+  downloadInvoice(order: Order): void {
+    this.toast.showToast('Téléchargement de la facture...', 'info');
+    // Generate and download invoice PDF
   }
 
   getStatusLabel(statut: string): string {
-    const labels: { [key: string]: string } = {
+    const map: Record<string, string> = {
       en_attente: 'En attente',
       en_preparation: 'En préparation',
       pret_pour_livraison: 'Prêt pour livraison',
       en_livraison: 'En livraison',
       livree: 'Livrée',
-      annulee: 'Annulée',
-      probleme: 'Problème'
+      annulee: 'Annulée'
     };
-    return labels[statut] || statut;
+    return map[statut] || statut;
   }
 
-  trackCommande(commandeId: string): void {
-    this.activeTab = 'tracking';
+  getStatusBadge(statut: string): string {
+    const map: Record<string, string> = {
+      en_attente: 'badge-warning',
+      en_preparation: 'badge-info',
+      pret_pour_livraison: 'badge-primary',
+      en_livraison: 'badge-primary',
+      livree: 'badge-success',
+      annulee: 'badge-danger'
+    };
+    return `badge ${map[statut] || 'badge-secondary'}`;
   }
 
-  // ========== REAL-TIME TRACKING ==========
-  initializeRealtimeTracking(): void {
-    // Simulate real-time updates every 5 seconds
-    this.updateSubscription = interval(5000).subscribe(() => {
-      this.updateOrderTracking();
+  // ---------- Addresses ----------
+  loadAddresses(): void {
+    this.http
+      .get<any>(`${this.apiUrl}/client/adresses`, this.auth.getAuthHeaders())
+      .pipe(catchError(() => of({ success: false, data: [] })))
+      .subscribe((res) => {
+        this.addresses = res?.data || [];
+        this.cdr.markForCheck();
+      });
+  }
+
+  addAddress(): void {
+    if (this.addressForm.invalid) {
+      this.toast.showToast('Veuillez remplir tous les champs requis', 'warning');
+      return;
+    }
+
+    const val = this.addressForm.value;
+    this.http
+      .post<any>(`${this.apiUrl}/adresses`, val, this.auth.getAuthHeaders())
+      .subscribe({
+        next: (res) => {
+          if (res?.success) {
+            this.toast.showToast('Adresse ajoutée', 'success');
+            this.addressForm.reset();
+            this.showAddressForm = false;
+            this.loadAddresses();
+          }
+        },
+        error: () => this.toast.showToast('Erreur ajout adresse', 'error')
+      });
+  }
+
+  deleteAddress(id: string): void {
+    if (!confirm('Supprimer cette adresse ?')) return;
+    this.http.delete<any>(`${this.apiUrl}/adresses/${id}`, this.auth.getAuthHeaders()).subscribe({
+      next: () => {
+        this.toast.showToast('Adresse supprimée', 'success');
+        this.loadAddresses();
+      },
+      error: () => this.toast.showToast('Erreur suppression', 'error')
     });
   }
 
-  updateOrderTracking(): void {
-    if (this.activeOrder) {
-      // Simulate driver movement
-      this.activeOrder.latitude += (Math.random() - 0.5) * 0.001;
-      this.activeOrder.longitude += (Math.random() - 0.5) * 0.001;
-      
-      // Update estimated arrival
-      const now = new Date().getTime();
-      const arrival = new Date(this.activeOrder.estimatedArrival).getTime();
-      this.activeOrder.progress = Math.min(100, ((now / arrival) * 100));
-      
-      // Simulate traffic updates
-      const trafficRandom = Math.random();
-      this.activeOrder.trafficCondition = trafficRandom < 0.4 ? 'light' : trafficRandom < 0.8 ? 'moderate' : 'heavy';
+  // ---------- Payment Methods ----------
+  loadPaymentMethods(): void {
+    // Mock data - replace with API call
+    this.paymentMethods = [
+      { id: '1', type: 'carte', numero: '****1234', nom: 'Carte principale', est_par_defaut: true },
+      { id: '2', type: 'portefeuille', est_par_defaut: false }
+    ];
+    this.cdr.markForCheck();
+  }
+
+  addPaymentMethod(): void {
+    if (this.paymentForm.invalid) {
+      this.toast.showToast('Formulaire invalide', 'warning');
+      return;
     }
+    this.toast.showToast('Méthode de paiement ajoutée (mock)', 'info');
+    this.paymentForm.reset();
+    this.showPaymentForm = false;
   }
 
-  getTrafficEmoji(condition: string): string {
-    const emojis: { [key: string]: string } = {
-      light: '🟢',
-      moderate: '🟡',
-      heavy: '🔴'
-    };
-    return emojis[condition] || '🟢';
+  deletePaymentMethod(id: string): void {
+    if (!confirm('Supprimer cette méthode ?')) return;
+    this.toast.showToast('Méthode supprimée (mock)', 'info');
   }
 
-  // ========== SMART RECOMMENDATIONS ==========
-  loadSmartRecommendations(): void {
-    // Get current time and weather for smart recommendations
-    const hour = new Date().getHours();
-    const season = this.getCurrentSeason();
-    
-    this.recommendations = this.getTimeBasedRecommendations(hour)
-      .concat(this.getSeasonalRecommendations(season))
-      .concat(this.getHistoryBasedRecommendations());
-  }
+  // ---------- Recommendations ----------
+  loadRecommendations(): void {
+    // Load nearby suppliers
+    this.http
+      .get<any>(`${this.apiUrl}/fournisseurs?limit=10`, this.auth.getAuthHeaders())
+      .pipe(catchError(() => of({ success: false, data: [] })))
+      .subscribe((res) => {
+        this.recommendedSuppliers = res?.data || [];
+        this.cdr.markForCheck();
+      });
 
-  getTimeBasedRecommendations(hour: number): any[] {
-    if (hour >= 11 && hour < 14) {
-      return [{ type: 'meal', emoji: '🍕', text: 'Déjeuner rapide ?' }];
-    } else if (hour >= 18 && hour < 21) {
-      return [{ type: 'dinner', emoji: '🍽️', text: 'Dîner gourmand ?' }];
-    } else if (hour >= 15 && hour < 17) {
-      return [{ type: 'snack', emoji: '☕', text: 'Pause goûter ?' }];
-    }
-    return [];
-  }
-
-  getSeasonalRecommendations(season: string): any[] {
-    const recommendations: { [key: string]: any } = {
-      summer: { emoji: '🍦', text: 'Glaces et boissons fraîches' },
-      winter: { emoji: '☕', text: 'Boissons chaudes et desserts' },
-      spring: { emoji: '🥗', text: 'Salades et plats légers' },
-      fall: { emoji: '🎃', text: 'Plats réconfortants' }
-    };
-    return [recommendations[season] || {}];
-  }
-
-  getHistoryBasedRecommendations(): any[] {
-    // Mock data - would come from API
-    return [
-      { emoji: '🍣', text: 'Vous adorez les sushi le vendredi !' },
-      { emoji: '🍔', text: 'Burgers tendance cette semaine' }
+    // Mock promotions
+    this.promotions = [
+      { id: '1', titre: 'Réduction 20%', description: 'Sur toutes les pizzas', code: 'PIZZA20' },
+      { id: '2', titre: 'Livraison gratuite', description: 'Commande min. 30€', code: 'FREE30' }
     ];
   }
 
-  getCurrentSeason(): string {
-    const month = new Date().getMonth();
-    if (month >= 2 && month <= 4) return 'spring';
-    if (month >= 5 && month <= 7) return 'summer';
-    if (month >= 8 && month <= 10) return 'fall';
-    return 'winter';
+  applyPromo(code: string): void {
+    this.toast.showToast(`Code ${code} appliqué`, 'success');
   }
 
-  // ========== LOYALTY & GAMIFICATION ==========
-  unlockBadge(badgeName: string): void {
-    const badge = this.badges.find(b => b.name === badgeName);
-    if (badge) {
-      badge.achieved = true;
+  // ---------- Preferences ----------
+  loadPreferences(): void {
+    // Load from API or use defaults
+    this.preferencesForm.patchValue({
+      horaires_preferes: '12:00-14:00, 19:00-21:00',
+      notifications_email: true,
+      notifications_sms: false,
+      notifications_push: true
+    });
+  }
+
+  savePreferences(): void {
+    if (this.preferencesForm.invalid) return;
+    this.toast.showToast('Préférences sauvegardées', 'success');
+  }
+
+  toggleAllergen(allergen: string): void {
+    const idx = this.selectedAllergens.indexOf(allergen);
+    if (idx >= 0) {
+      this.selectedAllergens.splice(idx, 1);
+    } else {
+      this.selectedAllergens.push(allergen);
+    }
+    this.cdr.markForCheck();
+  }
+
+  toggleDietary(pref: string): void {
+    const idx = this.selectedDietary.indexOf(pref);
+    if (idx >= 0) {
+      this.selectedDietary.splice(idx, 1);
+    } else {
+      this.selectedDietary.push(pref);
+    }
+    this.cdr.markForCheck();
+  }
+
+  // ---------- Wallet ----------
+  loadWallet(): void {
+    this.http
+      .get<any>(`${this.apiUrl}/client/profile`, this.auth.getAuthHeaders())
+      .pipe(catchError(() => of({ success: false, data: {} })))
+      .subscribe((res) => {
+        this.walletBalance = res?.data?.portefeuille || 0;
+        this.cdr.markForCheck();
+      });
+  }
+
+  applyPromoCode(): void {
+    if (!this.promoCode.trim()) {
+      this.toast.showToast('Code promo requis', 'warning');
+      return;
+    }
+    this.toast.showToast(`Code ${this.promoCode} appliqué`, 'success');
+    this.promoCode = '';
+  }
+
+  // ---------- Support ----------
+  loadTickets(): void {
+    // Mock tickets
+    this.tickets = [
+      {
+        id: '1',
+        sujet: 'Problème de livraison',
+        message: 'Ma commande est en retard',
+        statut: 'ouvert',
+        date_creation: new Date().toISOString()
+      }
+    ];
+    this.cdr.markForCheck();
+  }
+
+  submitTicket(): void {
+    if (this.supportForm.invalid) {
+      this.toast.showToast('Veuillez remplir tous les champs', 'warning');
+      return;
+    }
+    this.toast.showToast('Ticket créé', 'success');
+    this.supportForm.reset();
+    this.loadTickets();
+  }
+
+  sendChatMessage(): void {
+    if (!this.chatDraft.trim()) return;
+    this.chatMessages.push({ from: 'client', message: this.chatDraft, at: new Date() });
+    this.chatDraft = '';
+    // Simulate support response
+    setTimeout(() => {
+      this.chatMessages.push({
+        from: 'support',
+        message: 'Merci pour votre message. Nous traitons votre demande.',
+        at: new Date()
+      });
+      this.cdr.markForCheck();
+    }, 2000);
+    this.cdr.markForCheck();
+  }
+
+  // ---------- Loyalty ----------
+  loadLoyalty(): void {
+    // Mock loyalty data
+    this.rewards = [
+      { id: '1', nom: 'Réduction 10%', points: 100, disponible: true },
+      { id: '2', nom: 'Livraison gratuite', points: 200, disponible: true }
+    ];
+    this.pointsHistory = [
+      { date: '2024-01-15', points: 50, description: 'Commande #1234' },
+      { date: '2024-01-10', points: 30, description: 'Commande #1233' }
+    ];
+  }
+
+  redeemReward(reward: any): void {
+    if (this.loyalty.points < reward.points) {
+      this.toast.showToast('Points insuffisants', 'warning');
+      return;
+    }
+    this.toast.showToast(`Récompense "${reward.nom}" réclamée`, 'success');
+    this.loyalty.points -= reward.points;
+    this.cdr.markForCheck();
+  }
+
+  // ---------- Settings ----------
+  loadSettings(): void {
+    const user = this.auth.currentUserValue;
+    if (user) {
+      this.settingsForm.patchValue({
+        nom_complet: user.nom_complet || '',
+        telephone: user.telephone || '',
+        email: user.email || ''
+      });
     }
   }
 
-  spinRewardsWheel(): void {
-    const rewards = ['50 DH credit', '10% off', 'Free delivery', '100 points'];
-    const randomReward = rewards[Math.floor(Math.random() * rewards.length)];
-    alert(`🎉 Congratulations! You won: ${randomReward}`);
+  saveSettings(): void {
+    if (this.settingsForm.invalid) {
+      this.toast.showToast('Formulaire invalide', 'warning');
+      return;
+    }
+
+    const val = this.settingsForm.value;
+    if (val.mot_de_passe && val.mot_de_passe !== val.mot_de_passe_confirme) {
+      this.toast.showToast('Les mots de passe ne correspondent pas', 'error');
+      return;
+    }
+
+    const payload: any = {
+      nom_complet: val.nom_complet,
+      telephone: val.telephone
+    };
+    if (val.mot_de_passe) payload.mot_de_passe = val.mot_de_passe;
+
+    this.auth.updateProfile(payload).subscribe({
+      next: () => {
+        this.toast.showToast('Paramètres sauvegardés', 'success');
+        this.currentUser = this.auth.currentUserValue;
+        this.cdr.markForCheck();
+      },
+      error: () => this.toast.showToast('Erreur sauvegarde', 'error')
+    });
   }
 
-  // ========== PAYMENT MANAGEMENT ==========
-  getMonthlySpending(): number {
-    return this.stats.montant_total_depense;
+  toggle2FA(): void {
+    this.twoFactorEnabled = !this.twoFactorEnabled;
+    this.toast.showToast(`2FA ${this.twoFactorEnabled ? 'activé' : 'désactivé'}`, 'info');
   }
 
-  toggleSplitPayment(): void {
-    console.log('Split payment enabled');
-  }
-
-  // ========== DRIVER COMMUNICATION ==========
-  sendQuickMessage(message: string): void {
-    console.log('Sending message to driver:', message);
-  }
-
-  shareLocationWithDriver(): void {
-    console.log('Location shared with driver');
-  }
-
-  // ========== ENVIRONMENTAL IMPACT ==========
-  calculateCO2Saved(): number {
-    return this.trackingStats.co2Saved;
-  }
-
-  offsetCO2Emissions(): void {
-    console.log('CO2 offset initiated');
-  }
-
-  // ========== TAB NAVIGATION ==========
-  switchTab(tab: 'home' | 'tracking' | 'history' | 'loyalty' | 'payments'): void {
-    this.activeTab = tab;
-  }
-
-  // ========== LOGOUT ==========
   logout(): void {
-    if (!confirm('Are you sure you want to disconnect?')) return;
-    this.authService.logout();
-    this.toastService.showToast('Disconnected successfully', 'success');
-    this.router.navigate(['/'], { replaceUrl: true });
+    if (confirm('Déconnexion ?')) {
+      this.auth.logout();
+      this.router.navigate(['/login']);
+    }
+  }
+
+  formatCurrency(v: number | undefined): string {
+    return (v || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
   }
 }
+

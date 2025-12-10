@@ -1,815 +1,380 @@
-<div class="fournisseur-dashboard">
-  <!-- Header -->
-  <div class="dashboard-header">
-    <div class="header-content">
-      <h1>Supplier Dashboard</h1>
-      <p>Manage your store, orders, and analytics</p>
+<div class="dashboard">
+  <header class="dashboard-header">
+    <div class="header-left">
+      <h1>Tableau de bord fournisseur</h1>
+      <p class="subtitle">Suivi commandes, catalogue, promotions et performance</p>
+      <p class="subtitle" *ngIf="currentUser">Bienvenue, {{ currentUser.nom_complet || currentUser.email }}</p>
     </div>
     <div class="header-actions">
-      <div class="store-status" [ngClass]="isOpen ? 'open' : 'closed'">
-        <span class="status-indicator"></span>
-        {{ isOpen ? 'Open' : 'Closed' }}
+      <div class="avatar" *ngIf="resolveImage(currentUser?.photo_profil) as avatarSrc">
+        <img [src]="avatarSrc" alt="avatar" />
       </div>
-      <button (click)="logout()" class="btn-logout">
-        <span class="logout-icon">🚪</span>
-        Disconnect
-      </button>
+      <span class="badge badge-pill">Notifications: {{ unreadNotifications }}</span>
+      <button class="btn ghost" (click)="loadAll()">Actualiser</button>
+      <button class="btn danger" (click)="logout()">Déconnexion</button>
     </div>
-  </div>
+  </header>
 
-  <!-- Alerts Banner -->
-  <div class="alerts-banner" *ngIf="alerts.length > 0">
-    <div class="alert-item" *ngFor="let alert of alerts" [ngClass]="'alert-' + alert.severity">
-      <span class="alert-icon">⚠️</span>
-      <div class="alert-content">
-        <strong>{{ alert.type | uppercase }}</strong>
-        <p>{{ alert.message }}</p>
-      </div>
-      <button class="close-btn">×</button>
+  <section class="stats-grid">
+    <div class="card stat">
+      <p class="label">Commandes aujourd'hui</p>
+      <h3>{{ stats.ordersToday }}</h3>
+      <small>Total commandes: {{ stats.totalOrders }}</small>
     </div>
-  </div>
+    <div class="card stat">
+      <p class="label">Revenus semaine</p>
+      <h3>{{ formatCurrency(stats.revenueWeek) }}</h3>
+      <small>Aujourd'hui: {{ formatCurrency(stats.revenueToday) }}</small>
+    </div>
+    <div class="card stat">
+      <p class="label">Note moyenne</p>
+      <h3>{{ stats.rating | number: '1.1-2' }}/5</h3>
+      <small>Préparation moyenne: {{ stats.avgPrepTime }} min</small>
+    </div>
+    <div class="card stat">
+      <p class="label">Produits actifs</p>
+      <h3>{{ statsSummary.totalProducts || produits.length }}</h3>
+      <small>Revenus totaux: {{ formatCurrency(statsSummary.totalRevenue || 0) }}</small>
+    </div>
+  </section>
 
-  <!-- Tab Navigation -->
-  <div class="tab-navigation">
-    <button 
-      *ngFor="let tab of ['overview', 'products', 'orders', 'statistics', 'finance', 'schedule', 'messages', 'settings']"
-      [class.active]="activeTab === tab"
-      (click)="switchTab(tab)"
-      class="tab-btn">
-      <span class="tab-icon">
-        <ng-container [ngSwitch]="tab">
-          <span *ngSwitchCase="'overview'">📊</span>
-          <span *ngSwitchCase="'products'">📦</span>
-          <span *ngSwitchCase="'orders'">🛒</span>
-          <span *ngSwitchCase="'statistics'">📈</span>
-          <span *ngSwitchCase="'finance'">💰</span>
-          <span *ngSwitchCase="'schedule'">📅</span>
-          <span *ngSwitchCase="'messages'">💬</span>
-          <span *ngSwitchCase="'settings'">⚙️</span>
-        </ng-container>
-      </span>
-      {{ tab | uppercase }}
-    </button>
-  </div>
+  <nav class="tab-nav">
+    <button [class.active]="activeTab === 'commandes'" (click)="switchTab('commandes')">Commandes</button>
+    <button [class.active]="activeTab === 'produits'" (click)="switchTab('produits')">Produits</button>
+    <button [class.active]="activeTab === 'promotions'" (click)="switchTab('promotions')">Promotions</button>
+    <button [class.active]="activeTab === 'statistiques'" (click)="switchTab('statistiques')">Statistiques</button>
+    <button [class.active]="activeTab === 'profil'" (click)="switchTab('profil')">Profil</button>
+    <button [class.active]="activeTab === 'support'" (click)="switchTab('support')">Support</button>
+    <button [class.active]="activeTab === 'avis'" (click)="switchTab('avis')">Avis</button>
+    <button [class.active]="activeTab === 'avances'" (click)="switchTab('avances')">Avancées</button>
+  </nav>
 
-  <!-- Loading State -->
-  <div *ngIf="loading" class="loading-state">
-    <div class="spinner"></div>
-    <p>Loading dashboard...</p>
-  </div>
-
-  <!-- TAB 1: OVERVIEW -->
-  <div *ngIf="activeTab === 'overview' && !loading" class="tab-content overview-tab">
-    <div class="overview-grid">
-      <!-- Key Stats -->
-      <div class="stat-card orders-today">
-        <div class="stat-header">
-          <span class="stat-icon">📦</span>
-          <span class="stat-label">Orders Today</span>
-        </div>
-        <div class="stat-value">{{ stats.ordersToday }}</div>
-        <div class="stat-trend">+{{ getCachedRandom('trend_hour') }} this hour</div>
+  <!-- Commandes -->
+  <section *ngIf="activeTab === 'commandes'" class="panel">
+    <div class="panel-header">
+      <div class="filters">
+        <button [class.active]="filtreStatut === 'en_cours'" (click)="loadCommandes('en_cours')">En cours</button>
+        <button [class.active]="filtreStatut === 'livrees'" (click)="loadCommandes('livrees')">Livrées</button>
+        <button [class.active]="filtreStatut === 'annulees'" (click)="loadCommandes('annulees')">Annulées</button>
+        <button [class.active]="filtreStatut === 'toutes'" (click)="loadCommandes('toutes')">Toutes</button>
       </div>
+      <span *ngIf="commandesLoading">Chargement...</span>
+    </div>
 
-      <div class="stat-card revenue-today">
-        <div class="stat-header">
-          <span class="stat-icon">💵</span>
-          <span class="stat-label">Revenue Today</span>
-        </div>
-        <div class="stat-value">{{ stats.revenueToday }} DH</div>
-        <div class="stat-trend">+{{ getCachedRandom('trend_percent') }}% from yesterday</div>
+    <div class="table">
+      <div class="table-head">
+        <span>Commande</span>
+        <span>Client</span>
+        <span>Montant</span>
+        <span>Statut</span>
+        <span>Date</span>
+        <span></span>
       </div>
-
-      <div class="stat-card rating">
-        <div class="stat-header">
-          <span class="stat-icon">⭐</span>
-          <span class="stat-label">Rating</span>
-        </div>
-        <div class="stat-value">{{ stats.rating }}</div>
-        <div class="stat-trend">{{ Math.floor(stats.rating * 100) }}% positive</div>
-      </div>
-
-      <div class="stat-card prep-time">
-        <div class="stat-header">
-          <span class="stat-icon">⏱️</span>
-          <span class="stat-label">Avg Prep Time</span>
-        </div>
-        <div class="stat-value">{{ stats.avgPrepTime }}m</div>
-        <div class="stat-trend">-2m from last week</div>
+      <div class="table-row" *ngFor="let c of commandesFiltrees" (click)="ouvrirCommande(c)">
+        <span>#{{ c.id | slice:0:8 }}</span>
+        <span>{{ c.client_nom || 'Client' }}</span>
+        <span>{{ formatCurrency(c.montant_total || 0) }}</span>
+        <span><span [class]="getStatutBadge(c.statut)">{{ c.statut }}</span></span>
+        <span>{{ c.date_commande | date:'short' }}</span>
+        <span class="actions">
+          <button class="ghost" (click)="mettreAJourStatut(c, 'en_preparation'); $event.stopPropagation()">Préparation</button>
+          <button class="ghost" (click)="mettreAJourStatut(c, 'pret_pour_livraison'); $event.stopPropagation()">Prête</button>
+          <button class="ghost" (click)="mettreAJourStatut(c, 'livree'); $event.stopPropagation()">Livrée</button>
+        </span>
       </div>
     </div>
 
-    <!-- Revenue Overview -->
-    <div class="content-row">
-      <div class="card revenue-overview">
-        <h3>Revenue Overview</h3>
-        <div class="revenue-stats">
-          <div class="revenue-item">
-            <span class="label">This Week</span>
-            <span class="amount">{{ stats.ordersWeek * 100 }} DH</span>
-          </div>
-          <div class="revenue-item">
-            <span class="label">This Month</span>
-            <span class="amount">{{ stats.revenueMonth }} DH</span>
-          </div>
-          <div class="revenue-item">
-            <span class="label">Total Orders</span>
-            <span class="amount">{{ stats.ordersMonth }}</span>
-          </div>
-        </div>
-        <canvas class="revenue-chart"></canvas>
+    <div class="side-panel" *ngIf="commandeSelectionnee as cmd">
+      <h3>Détails commande #{{ cmd.id | slice:0:10 }}</h3>
+      <p><strong>Client :</strong> {{ cmd.client_nom || 'N/A' }}</p>
+      <p><strong>Adresse :</strong> {{ cmd.rue || '—' }}, {{ cmd.ville || '' }}</p>
+      <p><strong>Montant :</strong> {{ formatCurrency(cmd.montant_total || 0) }}</p>
+      <p><strong>Paiement :</strong> {{ cmd.mode_paiement || 'n/c' }}</p>
+      <p><strong>Instructions :</strong> {{ cmd.instructions_speciales || '—' }}</p>
+      <div class="chips">
+        <span class="chip" *ngFor="let p of cmd.produits || []">
+          {{ p.nom }} ×{{ p.quantite }} ({{ formatCurrency(p.prixUnitaire || 0) }})
+        </span>
       </div>
-
-      <!-- Active Orders -->
-      <div class="card active-orders">
-        <h3>Active Orders</h3>
-        <div class="orders-list">
-          <div *ngFor="let order of orders.slice(0, 3)" class="order-item" [ngClass]="'status-' + order.status">
-            <div class="order-header">
-              <span class="order-id">{{ order.numero_suivi }}</span>
-              <span class="order-time">{{ getTimeRemaining(order.estimatedPickup) }}</span>
-            </div>
-            <p class="order-client">{{ order.client_nom }}</p>
-            <div class="order-status-bar">
-              <div class="progress" [style.width.%]="order.status === 'pending' ? 25 : order.status === 'preparing' ? 50 : order.status === 'ready' ? 75 : 100"></div>
-            </div>
-            <button (click)="viewOrderDetails(order)" class="view-btn">View Details</button>
-          </div>
-        </div>
+      <div class="actions">
+        <button (click)="mettreAJourStatut(cmd, 'en_preparation')">En préparation</button>
+        <button (click)="mettreAJourStatut(cmd, 'pret_pour_livraison')">Prête</button>
+        <button class="success" (click)="mettreAJourStatut(cmd, 'livree')">Marquer livrée</button>
       </div>
     </div>
+  </section>
 
-    <!-- Recent Activity & Trends -->
-    <div class="content-row">
-      <div class="card trends">
-        <h3>Weekly Trends</h3>
-        <div class="trend-chart">
-          <div *ngFor="let day of salesByPeriod.labels" class="trend-bar-container">
-            <div class="trend-bar" [style.height.%]="salesByPeriod.data[salesByPeriod.labels.indexOf(day)] / 10"></div>
-            <span class="trend-label">{{ day }}</span>
-          </div>
+  <!-- Produits -->
+  <section *ngIf="activeTab === 'produits'" class="panel two-col">
+    <div>
+      <h3>{{ produitEdition ? 'Modifier un produit' : 'Ajouter un produit' }}</h3>
+      <form [formGroup]="produitForm" (ngSubmit)="produitEdition ? enregistrerEdition() : enregistrerProduit()">
+        <label>Nom*<input formControlName="nom" placeholder="Pizza 4 fromages" /></label>
+        <label>Description<textarea formControlName="description" rows="3"></textarea></label>
+        <div class="grid-2">
+          <label>Prix*<input type="number" step="0.1" formControlName="prix" /></label>
+          <label>Quantité*<input type="number" formControlName="quantite" /></label>
         </div>
-      </div>
-
-      <div class="card top-products">
-        <h3>Top Performing Products</h3>
-        <div class="products-ranking">
-          <div *ngFor="let product of topProducts; let i = index" class="rank-item">
-            <span class="rank-number">{{ i + 1 }}</span>
-            <span class="rank-name">{{ product.name }}</span>
-            <span class="rank-sales">{{ product.sales }} sales</span>
-            <span class="rank-trend" [ngClass]="product.trend === 'up' ? 'up' : 'down'">
-              {{ product.trend === 'up' ? '📈' : '📉' }}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- TAB 2: PRODUCTS -->
-  <div *ngIf="activeTab === 'products' && !loading" class="tab-content products-tab">
-    <div class="products-header">
-      <h2>Product Inventory</h2>
-      <button (click)="addProduct()" class="btn-add-product">+ Add Product</button>
-    </div>
-
-    <!-- Product Form -->
-    <div *ngIf="showProductForm" class="card product-form">
-      <h3>{{ selectedProduct ? 'Edit Product' : 'Add New Product' }}</h3>
-      <form (ngSubmit)="selectedProduct ? updateProduct() : saveProduct()">
-        <div class="form-group">
-          <label>Product Name</label>
-          <input 
-            type="text" 
-            [(ngModel)]="newProduct.nom" 
-            name="nom"
-            placeholder="Enter product name"
-            required>
-        </div>
-
-        <div class="form-group">
-          <label>Description</label>
-          <textarea 
-            [(ngModel)]="newProduct.description" 
-            name="description"
-            placeholder="Product description"
-            rows="3"></textarea>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label>Price (DH)</label>
-            <input 
-              type="number" 
-              [(ngModel)]="newProduct.prix" 
-              name="prix"
-              placeholder="0.00"
-              step="0.01">
-          </div>
-
-          <div class="form-group">
-            <label>Quantity</label>
-            <input 
-              type="number" 
-              [(ngModel)]="newProduct.quantite" 
-              name="quantite"
-              placeholder="0">
-          </div>
-
-          <div class="form-group">
-            <label>Category</label>
-            <select [(ngModel)]="newProduct.categorie" name="categorie">
-              <option value="food">Food</option>
-              <option value="drinks">Drinks</option>
-              <option value="desserts">Desserts</option>
-              <option value="other">Other</option>
+        <div class="grid-2">
+          <label>Catégorie*
+            <select formControlName="categorie_id">
+              <option value="" disabled>Choisir</option>
+              <option *ngFor="let c of categories" [value]="c.id">{{ c.name }}</option>
             </select>
-          </div>
+          </label>
+          <label>Promo (%)<input type="number" formControlName="promotionPercent" /></label>
+        </div>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="disponible" /> Disponible
+        </label>
+
+        <div class="grid-2">
+          <label>Image principale*<input type="file" (change)="onMainImageSelected($event)" [required]="!produitEdition" /></label>
+          <label>Images optionnelles<input type="file" multiple (change)="onAdditionalImagesSelected($event)" /></label>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label>Discount %</label>
-            <input 
-              type="number" 
-              [(ngModel)]="newProduct.promotionPercent" 
-              name="promotionPercent"
-              placeholder="0"
-              min="0"
-              max="100">
-          </div>
-
-          <div class="form-group">
-            <label>Status</label>
-            <select [(ngModel)]="newProduct.status" name="status">
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="out_of_stock">Out of Stock</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-actions">
-          <button type="submit" class="btn-primary">{{ selectedProduct ? 'Update' : 'Add' }} Product</button>
-          <button type="button" (click)="showProductForm = false; selectedProduct = null" class="btn-secondary">Cancel</button>
+        <div class="actions">
+          <button type="submit">{{ produitEdition ? 'Mettre à jour' : 'Ajouter' }}</button>
+          <button type="button" class="ghost" (click)="resetProduitForm(); produitEdition = null">Réinitialiser</button>
         </div>
       </form>
     </div>
 
-    <!-- Products Grid -->
-    <div class="products-grid">
-      <div *ngFor="let product of products" class="product-card" [ngClass]="'status-' + product.status">
-        <div class="product-image">
-          <img [src]="product.image || 'https://via.placeholder.com/200'" [alt]="product.nom">
-          <span *ngIf="product.promotionPercent" class="discount-badge">-{{ product.promotionPercent }}%</span>
-          <span class="status-badge">{{ product.status }}</span>
-        </div>
-
-        <div class="product-info">
-          <h4>{{ product.nom }}</h4>
-          <p class="description">{{ product.description }}</p>
-          
-          <div class="product-meta">
-            <span class="price">{{ product.prix }} DH</span>
-            <span class="stock" [ngClass]="product.quantite === 0 ? 'out' : 'in'">
-              Stock: {{ product.quantite }}
-            </span>
-          </div>
-
-          <div class="product-actions">
-            <button (click)="toggleProductStatus(product)" class="btn-toggle">
-              {{ product.status === 'active' ? 'Deactivate' : 'Activate' }}
-            </button>
-            <button (click)="editProduct(product)" class="btn-edit">Edit</button>
-            <button (click)="deleteProduct(product.id)" class="btn-delete">Delete</button>
-          </div>
-        </div>
+    <div>
+      <div class="panel-header">
+        <h3>Produits ({{ produits.length }})</h3>
+        <span *ngIf="produitsLoading">Chargement...</span>
       </div>
-    </div>
-
-    <div *ngIf="products.length === 0" class="empty-state">
-      <p>No products yet. Add your first product!</p>
-    </div>
-  </div>
-
-  <!-- TAB 3: ORDERS -->
-  <div *ngIf="activeTab === 'orders' && !loading" class="tab-content orders-tab">
-    <div class="orders-header">
-      <h2>Order Management</h2>
-      <div class="filter-controls">
-        <input type="text" placeholder="Search order ID...">
-        <select>
-          <option value="">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="preparing">Preparing</option>
-          <option value="ready">Ready</option>
-          <option value="picked_up">Picked Up</option>
-          <option value="delivered">Delivered</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Order Details Modal -->
-    <div *ngIf="showOrderDetails && selectedOrder" class="order-details-modal">
-      <div class="modal-content">
-        <button class="close-modal" (click)="showOrderDetails = false">×</button>
-        
-        <h2>Order {{ selectedOrder.numero_suivi }}</h2>
-        
-        <div class="modal-body">
-          <div class="order-info">
-            <p><strong>Customer:</strong> {{ selectedOrder.client_nom }}</p>
-            <p><strong>Amount:</strong> {{ selectedOrder.montant_total }} DH</p>
-            <p><strong>Created:</strong> {{ selectedOrder.createdAt | date:'medium' }}</p>
-            <p *ngIf="selectedOrder.instructions"><strong>Instructions:</strong> {{ selectedOrder.instructions }}</p>
-          </div>
-
-          <div class="order-items">
-            <h4>Items</h4>
-            <div *ngFor="let item of selectedOrder.products" class="order-item-detail">
-              <span>{{ item.nom }}</span>
-              <span>Qty: {{ item.qty }}</span>
+      <div class="product-list-scrollable">
+        <div class="product-list">
+          <div class="product-card" *ngFor="let p of produitsPagines">
+            <div class="product-main">
+              <div class="product-image" *ngIf="resolveImage(p.image) as imgSrc">
+                <img [src]="imgSrc" alt="image {{ p.nom }}" />
+              </div>
+              <div class="product-info">
+                <h4>{{ p.nom }}</h4>
+                <p class="muted">{{ p.description || '—' }}</p>
+                <p>{{ formatCurrency(p.prix) }} • Stock: {{ p.quantite }}</p>
+                <span class="chip" [class.out]="p.status === 'out_of_stock'">{{ p.status || 'active' }}</span>
+                <div *ngIf="p.images_additionnelles?.length">
+                  <button class="ghost tiny" (click)="toggleImages(p)">
+                    {{ p._showImages ? 'Masquer' : 'Voir' }} autres images ({{ p.images_additionnelles?.length || 0 }})
+                  </button>
+                  <div class="gallery" *ngIf="p._showImages">
+                    <img *ngFor="let img of p.images_additionnelles" [src]="resolveImage(img)" alt="image additionnelle" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="ghost" (click)="modifierProduit(p)">Modifier</button>
+              <button class="ghost" (click)="basculerDisponibilite(p)">{{ p.status === 'out_of_stock' ? 'Activer' : 'Désactiver' }}</button>
+              <button class="danger ghost" (click)="supprimerProduit(p)">Supprimer</button>
             </div>
           </div>
+        </div>
+      </div>
+      <div class="pagination-controls" *ngIf="produits.length > itemsPerPage">
+        <button class="ghost" (click)="previousPage()" [disabled]="currentPage === 1">← Précédent</button>
+        <span class="page-info">Page {{ currentPage }} / {{ totalPages }}</span>
+        <button class="ghost" (click)="nextPage()" [disabled]="currentPage === totalPages">Suivant →</button>
+      </div>
+    </div>
+  </section>
 
-          <div class="status-update">
-            <h4>Update Status</h4>
-            <select [(ngModel)]="selectedOrder.status">
-              <option value="pending">Pending</option>
-              <option value="preparing">Preparing</option>
-              <option value="ready">Ready</option>
-              <option value="picked_up">Picked Up</option>
-              <option value="delivered">Delivered</option>
+  <!-- Promotions -->
+  <section *ngIf="activeTab === 'promotions'" class="panel two-col">
+    <div>
+      <h3>Créer une promotion / réduction</h3>
+      <form [formGroup]="promotionForm" (ngSubmit)="ajouterPromotion()">
+        <div class="grid-2">
+          <label>Code*<input formControlName="code" placeholder="PIZZA10" /></label>
+          <label>Réduction (%)<input type="number" formControlName="reduction" /></label>
+        </div>
+        <label>Description<textarea formControlName="description" rows="3"></textarea></label>
+        <div class="grid-2">
+          <label>Type
+            <select formControlName="type">
+              <option value="coupon">Coupon</option>
+              <option value="happy_hour">Happy hour</option>
+              <option value="special">Offre spéciale</option>
             </select>
-            <button (click)="updateOrderStatus(selectedOrder, selectedOrder.status)" class="btn-primary">Save Status</button>
-          </div>
+          </label>
+          <label>Produit concerné
+            <select formControlName="produitId">
+              <option [ngValue]="null">Tous</option>
+              <option *ngFor="let p of produits" [value]="p.id">{{ p.nom }}</option>
+            </select>
+          </label>
+        </div>
+        <div class="grid-2">
+          <label>Début<input type="datetime-local" formControlName="debut" /></label>
+          <label>Fin<input type="datetime-local" formControlName="fin" /></label>
+        </div>
+        <button type="submit">Enregistrer</button>
+      </form>
+    </div>
 
-          <button *ngIf="selectedOrder.status === 'ready'" (click)="notifyCourier(selectedOrder)" class="btn-notify">
-            Notify Courier for Pickup
-          </button>
+    <div>
+      <h3>Promotions actives</h3>
+      <div class="table">
+        <div class="table-head">
+          <span>Code</span>
+          <span>Type</span>
+          <span>Réduction</span>
+          <span>Produit</span>
+          <span>Statut</span>
+          <span></span>
+        </div>
+        <div class="table-row" *ngFor="let promo of promotions">
+          <span>{{ promo.code }}</span>
+          <span>{{ promo.type }}</span>
+          <span>-{{ promo.reduction }}%</span>
+          <span>{{ promo.produitId ? ('#' + (promo.produitId | slice:0:6)) : 'Tous' }}</span>
+          <span><span class="chip" [class.out]="!promo.active">{{ promo.active ? 'Active' : 'Suspendue' }}</span></span>
+          <span class="actions">
+            <button class="ghost" (click)="basculerPromotion(promo)">{{ promo.active ? 'Suspendre' : 'Activer' }}</button>
+            <button class="danger ghost" (click)="supprimerPromotion(promo)">Supprimer</button>
+          </span>
         </div>
       </div>
     </div>
+  </section>
 
-    <!-- Orders Table -->
-    <div class="card orders-list">
-      <table>
-        <thead>
-          <tr>
-            <th>Order ID</th>
-            <th>Customer</th>
-            <th>Amount</th>
-            <th>Status</th>
-            <th>Prep Time</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let order of orders" [ngClass]="'status-' + order.status">
-            <td>{{ order.numero_suivi }}</td>
-            <td>{{ order.client_nom }}</td>
-            <td>{{ order.montant_total }} DH</td>
-            <td>
-              <span class="status-badge" [style.backgroundColor]="getOrderStatusColor(order.status)">
-                {{ order.status | uppercase }}
-              </span>
-            </td>
-            <td>{{ getTimeRemaining(order.estimatedPickup) }}</td>
-            <td>
-              <button (click)="viewOrderDetails(order)" class="btn-view">View</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+  <!-- Statistiques -->
+  <section *ngIf="activeTab === 'statistiques'" class="panel">
+    <div class="panel-header">
+      <h3>Statistiques détaillées</h3>
+      <span *ngIf="statsLoading">Chargement...</span>
     </div>
-
-    <div *ngIf="orders.length === 0" class="empty-state">
-      <p>No orders at the moment.</p>
+    <div class="stats-grid">
+      <div class="card">
+        <p class="label">Commandes mois</p>
+        <h3>{{ stats.ordersMonth }}</h3>
+        <small>Semaine: {{ stats.ordersWeek }} | Jour: {{ stats.ordersToday }}</small>
+      </div>
+      <div class="card">
+        <p class="label">Revenus mois</p>
+        <h3>{{ formatCurrency(stats.revenueMonth) }}</h3>
+        <small>Semaine: {{ formatCurrency(stats.revenueWeek) }}</small>
+      </div>
+      <div class="card">
+        <p class="label">Performance service</p>
+        <h3>{{ stats.rating | number:'1.1-2' }}/5</h3>
+        <small>Temps prep: {{ stats.avgPrepTime }} min</small>
+      </div>
     </div>
-  </div>
+    <div class="charts">
+      <div class="chart-card">
+        <h4>Commandes (Jour/Semaine/Mois)</h4>
+        <div class="bar" *ngFor="let o of charts.orders">
+          <span class="bar-label">{{ o.label }}</span>
+          <div class="bar-track">
+            <div class="bar-fill" [style.width]="chartBarWidth(o.value, charts.orders[2]?.value || 1)"></div>
+          </div>
+          <span class="bar-value">{{ o.value }}</span>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h4>Revenus (Jour/Semaine/Mois)</h4>
+        <div class="bar" *ngFor="let r of charts.revenue">
+          <span class="bar-label">{{ r.label }}</span>
+          <div class="bar-track">
+            <div class="bar-fill revenue" [style.width]="chartBarWidth(r.value, charts.revenue[2]?.value || 1)"></div>
+          </div>
+          <span class="bar-value">{{ formatCurrency(r.value) }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
 
-  <!-- TAB 4: STATISTICS -->
-  <div *ngIf="activeTab === 'statistics' && !loading" class="tab-content statistics-tab">
-    <div class="stats-header">
-      <h2>Business Analytics</h2>
-      <div class="stats-controls">
-        <select>
-          <option value="week">This Week</option>
-          <option value="month">This Month</option>
-          <option value="year">This Year</option>
+  <!-- Profil -->
+  <section *ngIf="activeTab === 'profil'" class="panel">
+    <h3>Profil et infos établissement</h3>
+    <div class="profile-row">
+      <div>
+        <p class="label">Image de profil</p>
+        <div class="avatar large" *ngIf="resolveImage(currentUser?.photo_profil) as avatarSrc">
+          <img [src]="avatarSrc" alt="avatar" />
+        </div>
+        <input type="file" (change)="onProfileFileSelected($event)" />
+        <button class="btn" (click)="uploadProfile()" [disabled]="profileUploading">Mettre à jour</button>
+      </div>
+      <div class="profile-meta">
+        <p><strong>Nom :</strong> {{ currentUser?.nom_complet || '—' }}</p>
+        <p><strong>Email :</strong> {{ currentUser?.email || '—' }}</p>
+      </div>
+    </div>
+    <div class="grid-2">
+      <label>Nom de l'établissement<input [(ngModel)]="businessInfo.nom" placeholder="LivraXpress Corner" /></label>
+      <label>Adresse<input [(ngModel)]="businessInfo.adresse" placeholder="12 rue Exemple" /></label>
+      <label>Horaires<textarea [(ngModel)]="businessInfo.horaires" rows="2" placeholder="Lun-Dim 10h-23h"></textarea></label>
+      <label>Infos bancaires<textarea [(ngModel)]="businessInfo.informationsBancaires" rows="2" placeholder="IBAN / RIB"></textarea></label>
+      <label>Disponibilité
+        <select [(ngModel)]="businessInfo.disponibilite">
+          <option value="ouvert">Ouvert</option>
+          <option value="ferme">Fermé</option>
         </select>
+      </label>
+    </div>
+    <div class="actions">
+      <button (click)="sauvegarderProfil()">Sauvegarder</button>
+    </div>
+  </section>
+
+  <!-- Support -->
+  <section *ngIf="activeTab === 'support'" class="panel two-col">
+    <div>
+      <h3>Contacter le support plateforme</h3>
+      <textarea [(ngModel)]="supportMessage" rows="5" placeholder="Décrivez votre problème (paiement, livraison, ... )"></textarea>
+      <div class="actions">
+        <button (click)="envoyerSupport()">Envoyer</button>
       </div>
     </div>
-
-    <div class="analytics-grid">
-      <!-- Sales Chart -->
-      <div class="card analytics-card full-width">
-        <h3>Sales Performance</h3>
-        <canvas class="sales-chart"></canvas>
-      </div>
-
-      <!-- Performance Metrics -->
-      <div class="card metrics-card">
-        <h4>Key Metrics</h4>
-        <div class="metric-item">
-          <span class="metric-label">Conversion Rate</span>
-          <span class="metric-value">{{ getConversionRate() }}%</span>
-        </div>
-        <div class="metric-item">
-          <span class="metric-label">Avg Order Value</span>
-          <span class="metric-value">{{ (stats.revenueMonth / stats.ordersMonth) | number: '1.0-0' }} DH</span>
-        </div>
-        <div class="metric-item">
-          <span class="metric-label">Total Revenue</span>
-          <span class="metric-value">{{ stats.revenueMonth }} DH</span>
+    <div>
+      <h3>Messagerie clients</h3>
+      <div class="chat-box">
+        <div *ngFor="let msg of chatMessages" [class.me]="msg.from === 'fournisseur'">
+          <small>{{ msg.at | date:'shortTime' }}</small>
+          <p>{{ msg.message }}</p>
         </div>
       </div>
-
-      <!-- Product Performance -->
-      <div class="card product-performance">
-        <h4>Best Products</h4>
-        <div class="performance-list">
-          <div *ngFor="let product of topProducts" class="perf-item">
-            <span>{{ product.name }}</span>
-            <div class="perf-bar">
-              <div class="perf-fill" [style.width.%]="(product.sales / 150) * 100"></div>
-            </div>
-            <span class="perf-value">{{ product.sales }}</span>
-          </div>
-          <div *ngIf="topProducts.length === 0" class="empty-message">
-            <p>📊 No product data available yet</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Peak Hours -->
-      <div class="card peak-hours">
-        <h4>Peak Hours</h4>
-        <div class="hours-info">
-          <p><strong>12:00 - 14:00</strong> Lunch Peak</p>
-          <p><strong>19:00 - 21:00</strong> Dinner Peak</p>
-        </div>
-      </div>
-
-      <!-- Store Ratings -->
-      <div class="card ratings-card">
-        <h4>Store Ratings</h4>
-        <div class="rating-info">
-          <div class="rating-score">
-            <span class="stars">
-              <ng-container *ngFor="let i of [1,2,3,4,5]">
-                <span *ngIf="i <= Math.floor(stats.rating)" class="star filled">⭐</span>
-                <span *ngIf="i > Math.floor(stats.rating)" class="star empty">☆</span>
-              </ng-container>
-            </span>
-            <span class="rating-value">{{ stats.rating | number: '1.1-1' }}/5</span>
-          </div>
-          <p class="review-count">{{ totalReviews }} reviews</p>
-        </div>
-      </div>
-
-      <!-- Orders by Status -->
-      <div class="card orders-status-card">
-        <h4>Orders by Status</h4>
-        <div class="status-breakdown">
-          <div *ngFor="let status of ordersByStatus" class="status-item">
-            <span class="status-name">{{ status.statut | uppercase }}</span>
-            <span class="status-count">{{ status.count }} orders</span>
-          </div>
-          <div *ngIf="ordersByStatus.length === 0" class="empty-message">
-            <p>📊 No order data available yet</p>
-          </div>
-        </div>
+      <div class="chat-input">
+        <input [(ngModel)]="chatDraft" placeholder="Répondre au client..." />
+        <button (click)="envoyerChat()">Envoyer</button>
       </div>
     </div>
+  </section>
 
-    <!-- Recent Reviews -->
-    <div class="card reviews-section full-width">
-      <h3>Recent Customer Reviews</h3>
-      <div class="reviews-list">
-        <div *ngFor="let review of reviews | slice:0:5" class="review-item">
-          <div class="review-header">
-            <span class="reviewer-name">{{ review.author }}</span>
-            <span class="review-rating">
-              <ng-container *ngFor="let i of [1,2,3,4,5]">
-                <span *ngIf="i <= review.rating">⭐</span>
-                <span *ngIf="i > review.rating">☆</span>
-              </ng-container>
-            </span>
-          </div>
-          <p class="review-comment">{{ review.comment }}</p>
-          <span class="review-date">{{ review.date | date:'short' }}</span>
-        </div>
-        <div *ngIf="reviews.length === 0" class="empty-message">
-          <p>💬 No reviews yet</p>
-        </div>
-      </div>
+  <!-- Avis -->
+  <section *ngIf="activeTab === 'avis'" class="panel">
+    <div class="panel-header">
+      <h3>Avis et évaluations</h3>
+      <span *ngIf="avisLoading">Chargement...</span>
     </div>
-
-    <div class="export-section">
-      <button (click)="downloadReport('pdf')" class="btn-export">📄 Download PDF Report</button>
-      <button (click)="downloadReport('excel')" class="btn-export">📊 Download Excel Report</button>
+    <div class="review-list">
+      <div class="review-card" *ngFor="let a of avis">
+        <div class="review-head">
+          <strong>{{ a.author }}</strong>
+          <span class="chip">Note {{ a.rating }}/5</span>
+          <small>{{ a.date | date:'short' }}</small>
+        </div>
+        <p>{{ a.comment || '—' }}</p>
+        <button class="ghost" (click)="repondreAvis(a)">Répondre</button>
+      </div>
+      <p *ngIf="!avis.length && !avisLoading" class="muted">Aucun avis pour le moment.</p>
     </div>
-  </div>
+  </section>
 
-  <!-- TAB 5: FINANCE -->
-  <div *ngIf="activeTab === 'finance' && !loading" class="tab-content finance-tab">
-    <div class="finance-header">
-      <h2>Finance & Payments</h2>
-    </div>
-
-    <div class="finance-grid">
-      <!-- Balance Card -->
-      <div class="card balance-card">
-        <h3>Available Balance</h3>
-        <div class="balance-amount">{{ availableBalance }} DH</div>
-        <div class="balance-info">
-          <p>Pending: {{ (stats.revenueToday * 0.1) | number: '1.0-0' }} DH</p>
-          <p>Commission: -{{ totalCommission }} DH</p>
-        </div>
-        <button (click)="requestPayout()" class="btn-payout">Request Payout</button>
-      </div>
-
-      <!-- Revenue Stats -->
-      <div class="card revenue-card">
-        <h3>Revenue</h3>
-        <div class="revenue-list">
-          <div class="revenue-row">
-            <span>Today</span>
-            <span class="amount">{{ stats.revenueToday }} DH</span>
-          </div>
-          <div class="revenue-row">
-            <span>This Week</span>
-            <span class="amount">{{ stats.ordersWeek * 100 }} DH</span>
-          </div>
-          <div class="revenue-row">
-            <span>This Month</span>
-            <span class="amount">{{ stats.revenueMonth }} DH</span>
-          </div>
-          <div class="revenue-row highlight">
-            <span>Net Revenue (after commission)</span>
-            <span class="amount">{{ getNetRevenue() | number: '1.0-0' }} DH</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Commission -->
-      <div class="card commission-card">
-        <h3>Commission Breakdown</h3>
-        <div class="commission-items">
-          <div class="commission-item">
-            <span>Commission Rate</span>
-            <span class="rate">5%</span>
-          </div>
-          <div class="commission-item">
-            <span>Total Commission</span>
-            <span class="amount">{{ totalCommission }} DH</span>
-          </div>
-          <div class="commission-item">
-            <span>Platform Fee</span>
-            <span class="fee">0 DH</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Payment History -->
-    <div class="card payment-history">
-      <h3>Payment History</h3>
-      <table *ngIf="paymentHistory.length > 0">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Amount</th>
-            <th>Commission</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr *ngFor="let payment of paymentHistory">
-            <td>{{ payment.date }}</td>
-            <td>{{ payment.amount }} DH</td>
-            <td>{{ payment.commission }} DH</td>
-            <td>
-              <span class="status-badge completed">{{ payment.status }}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div *ngIf="paymentHistory.length === 0" class="empty-state">
-        <p>💳 No payment history yet</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- TAB 6: SCHEDULE -->
-  <div *ngIf="activeTab === 'schedule' && !loading" class="tab-content schedule-tab">
-    <div class="schedule-header">
-      <h2>Store Schedule & Availability</h2>
-    </div>
-
-    <div class="schedule-grid">
-      <!-- Opening Hours -->
-      <div class="card schedule-card">
-        <h3>Operating Hours</h3>
-        <form (ngSubmit)="updateSchedule()">
-          <div class="form-group">
-            <label>Opening Time</label>
-            <input type="time" [(ngModel)]="openingTime" name="openingTime">
-          </div>
-          <div class="form-group">
-            <label>Closing Time</label>
-            <input type="time" [(ngModel)]="closingTime" name="closingTime">
-          </div>
-          <button type="submit" class="btn-primary">Update Hours</button>
-        </form>
-      </div>
-
-      <!-- Availability Status -->
-      <div class="card availability-card">
-        <h3>Current Status</h3>
-        <div class="status-toggle">
-          <button 
-            (click)="toggleAvailability()"
-            [class.active]="isOpen"
-            class="toggle-btn">
-            {{ isOpen ? '🟢 Open' : '🔴 Closed' }}
-          </button>
-          <p class="status-text">
-            {{ isOpen ? 'Store is currently open and accepting orders' : 'Store is closed' }}
-          </p>
-        </div>
-      </div>
-
-      <!-- Holidays -->
-      <div class="card holidays-card full-width">
-        <h3>Holidays & Closures</h3>
-        <div class="holidays-list">
-          <div *ngFor="let holiday of holidays" class="holiday-item">
-            {{ holiday }}
-            <button class="remove-btn">Remove</button>
-          </div>
-          <input type="date" placeholder="Add holiday date">
-          <button class="btn-add">+ Add Holiday</button>
-        </div>
-        <p *ngIf="holidays.length === 0" class="empty">No holidays scheduled</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- TAB 7: MESSAGES -->
-  <div *ngIf="activeTab === 'messages' && !loading" class="tab-content messages-tab">
-    <div class="messages-header">
-      <h2>Messages & Support</h2>
-    </div>
-
-    <div class="messages-layout">
-      <!-- Conversation List -->
-      <div class="conversations-panel">
-        <div *ngIf="false" class="conversation-item active">
-          <div class="avatar">👤</div>
-          <div class="conv-info">
-            <h4>Support Team</h4>
-            <p>Hi, how can we help?</p>
-          </div>
-        </div>
-        <div *ngIf="false" class="conversation-item">
-          <div class="avatar">👤</div>
-          <div class="conv-info">
-            <h4>Order #123 Issue</h4>
-            <p>Customer dispute regarding...</p>
-          </div>
-        </div>
-        <div *ngIf="true" class="empty-state">
-          <p>💬 No conversations yet</p>
-        </div>
-      </div>
-
-      <!-- Chat Area -->
-      <div class="chat-panel">
-        <div class="chat-header">
-          <h3>Messages</h3>
-          <span class="online-status">🟢 Online</span>
-        </div>
-
-        <div class="messages-area">
-          <div class="empty-state">
-            <p>Select a conversation to start chatting</p>
-          </div>
-        </div>
-
-        <div class="chat-input">
-          <input type="text" placeholder="Type your message...">
-          <button class="send-btn">Send</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- TAB 8: SETTINGS -->
-  <div *ngIf="activeTab === 'settings' && !loading" class="tab-content settings-tab">
-    <div class="settings-header">
-      <h2>Account & Store Settings</h2>
-    </div>
-
-    <div class="settings-grid">
-      <!-- Store Information -->
-      <div class="card settings-card">
-        <h3>Store Information</h3>
-        <form (ngSubmit)="saveSettings()">
-          <div class="form-group">
-            <label>Store Name</label>
-            <input type="text" [value]="currentUser?.nom_complet" placeholder="Store name">
-          </div>
-          <div class="form-group">
-            <label>Email</label>
-            <input type="email" [value]="currentUser?.email" placeholder="Store email">
-          </div>
-          <div class="form-group">
-            <label>Phone</label>
-            <input type="tel" placeholder="+212 ...">
-          </div>
-          <div class="form-group">
-            <label>Address</label>
-            <textarea placeholder="Full address" rows="3"></textarea>
-          </div>
-          <button type="submit" class="btn-primary">Save Changes</button>
-        </form>
-      </div>
-
-      <!-- Bank Information -->
-      <div class="card settings-card">
-        <h3>Bank Details</h3>
-        <form (ngSubmit)="saveSettings()">
-          <div class="form-group">
-            <label>Bank Name</label>
-            <input type="text" placeholder="Bank name">
-          </div>
-          <div class="form-group">
-            <label>Account Holder</label>
-            <input type="text" placeholder="Full name">
-          </div>
-          <div class="form-group">
-            <label>IBAN</label>
-            <input type="text" placeholder="IBAN">
-          </div>
-          <button type="submit" class="btn-primary">Update Bank Info</button>
-        </form>
-      </div>
-
-      <!-- Notification Preferences -->
-      <div class="card settings-card">
-        <h3>Notifications</h3>
-        <div class="checkbox-group">
-          <label>
-            <input type="checkbox" checked>
-            Email notifications
-          </label>
-          <label>
-            <input type="checkbox" checked>
-            SMS alerts
-          </label>
-          <label>
-            <input type="checkbox">
-            Marketing emails
-          </label>
-        </div>
-      </div>
-
-      <!-- Security -->
-      <div class="card settings-card">
-        <h3>Security</h3>
-        <div class="security-items">
-          <div class="security-item">
-            <span>Change Password</span>
-            <button class="btn-secondary">Update</button>
-          </div>
-          <div class="security-item">
-            <span>Two-Factor Authentication</span>
-            <button class="btn-secondary">Enable</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Documents -->
-      <div class="card settings-card full-width">
-        <h3>Legal Documents</h3>
-        <div class="documents-list">
-          <div class="doc-item">
-            <span>Business License</span>
-            <button class="btn-upload">Upload</button>
-          </div>
-          <div class="doc-item">
-            <span>Tax Certificate</span>
-            <button class="btn-upload">Upload</button>
-          </div>
-          <div class="doc-item">
-            <span>ID Verification</span>
-            <button class="btn-upload">Upload</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- Avancées -->
+  <section *ngIf="activeTab === 'avances'" class="panel">
+    <h3>Fonctionnalités avancées</h3>
+    <ul>
+      <li>Gestion des stocks : les quantités sont synchronisées depuis le champ stock/quantité des produits.</li>
+      <li>Images obligatoires : le formulaire d'ajout impose une image principale, les autres sont optionnelles.</li>
+      <li>Notifications temps réel : via le service de notifications existant (polling).</li>
+      <li>Options/variantes : champs à enrichir côté backend (stockés en mémoire côté UI pour l'instant).</li>
+    </ul>
+  </section>
 </div>

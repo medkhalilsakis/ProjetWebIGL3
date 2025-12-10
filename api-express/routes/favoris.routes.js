@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
-const { authMiddleware, checkRole } = require('../middleware/auth.middleware');
+const { authMiddleware } = require('../middleware/auth.middleware');
 
 // GET user favorites
 router.get('/', authMiddleware, async (req, res) => {
@@ -26,7 +26,7 @@ router.get('/', authMiddleware, async (req, res) => {
         prix: p.prix,
         quantite: p.stock,
         status: p.disponible ? 'active' : 'inactive',
-        categorie: p.categorie,
+        categorie_id: p.categorie_id || p.categorie,
         image: p.image_principale,
         promotionPercent: p.prix_promotion ? Math.round((1 - p.prix_promotion / p.prix) * 100) : 0,
         fournisseur_id: p.fournisseur_id
@@ -43,31 +43,14 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const { produit_id } = req.body;
 
-    const clientResult = await db.query(
-      'SELECT id FROM clients WHERE utilisateur_id = $1',
-      [req.user.user_id]
-    );
-
-    if (clientResult.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Client not found' });
-    }
-
+    const clientResult = await db.query('SELECT id FROM clients WHERE utilisateur_id = $1 LIMIT 1', [req.user.user_id]);
+    if (clientResult.rowCount === 0) return res.status(404).json({ success: false, message: 'Client not found' });
     const clientId = clientResult.rows[0].id;
 
-    // Check if already favorited
-    const existingResult = await db.query(
-      'SELECT 1 FROM favoris WHERE client_id = $1 AND produit_id = $2',
-      [clientId, produit_id]
-    );
+    const exists = await db.query('SELECT 1 FROM favoris WHERE client_id = $1 AND produit_id = $2 LIMIT 1', [clientId, produit_id]);
+    if (exists.rowCount > 0) return res.status(409).json({ success: false, message: 'Product already in favorites' });
 
-    if (existingResult.rows.length > 0) {
-      return res.status(400).json({ success: false, message: 'Product already in favorites' });
-    }
-
-    await db.query(
-      'INSERT INTO favoris (id, client_id, produit_id, created_at) VALUES ($1, $2, $3, now())',
-      [uuidv4(), clientId, produit_id]
-    );
+    await db.query('INSERT INTO favoris (id, client_id, produit_id, created_at) VALUES ($1, $2, $3, NOW())', [uuidv4(), clientId, produit_id]);
 
     return res.status(201).json({ success: true, message: 'Added to favorites' });
   } catch (error) {
@@ -81,19 +64,11 @@ router.delete('/:produit_id', authMiddleware, async (req, res) => {
   try {
     const { produit_id } = req.params;
 
-    const clientResult = await db.query(
-      'SELECT id FROM clients WHERE utilisateur_id = $1',
-      [req.user.user_id]
-    );
+    const clientResult = await db.query('SELECT id FROM clients WHERE utilisateur_id = $1 LIMIT 1', [req.user.user_id]);
+    if (clientResult.rowCount === 0) return res.status(404).json({ success: false, message: 'Client not found' });
 
-    if (clientResult.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Client not found' });
-    }
-
-    await db.query(
-      'DELETE FROM favoris WHERE client_id = $1 AND produit_id = $2',
-      [clientResult.rows[0].id, produit_id]
-    );
+    const deleteRes = await db.query('DELETE FROM favoris WHERE client_id = $1 AND produit_id = $2 RETURNING id', [clientResult.rows[0].id, produit_id]);
+    if (deleteRes.rowCount === 0) return res.status(404).json({ success: false, message: 'Favorite not found' });
 
     return res.json({ success: true, message: 'Removed from favorites' });
   } catch (error) {

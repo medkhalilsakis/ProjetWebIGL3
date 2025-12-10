@@ -1,56 +1,64 @@
 // routes/produit.routes.js
 const express = require('express');
 const router = express.Router();
-const { v4: uuidv4 } = require('uuid');
 const db = require('../config/database');
-const { authMiddleware, checkRole } = require('../middleware/auth.middleware');
 
-// GET all products (Public)
+function addParam(params, value) {
+  params.push(value);
+  return `$${params.length}`;
+}
+
 router.get('/', async (req, res) => {
   try {
-    const { fournisseur_id, categorie, search, limit = 50, offset = 0 } = req.query;
-    
-    let query = 'SELECT * FROM produits WHERE disponible = true';
+    const { fournisseur_id, categorie_id, search } = req.query;
+    let limit = parseInt(req.query.limit, 10) || 50;
+    let offset = parseInt(req.query.offset, 10) || 0;
+    if (limit < 1) limit = 1;
+    if (limit > 200) limit = 200;
+    if (offset < 0) offset = 0;
+
+    let query = 'SELECT * FROM produits WHERE COALESCE(disponible, false) = true';
     const params = [];
-    let paramCount = 1;
 
     if (fournisseur_id) {
-      query += ` AND fournisseur_id = $${paramCount++}`;
-      params.push(fournisseur_id);
+      query += ` AND fournisseur_id = ${addParam(params, fournisseur_id)}`;
     }
 
-    if (categorie) {
-      query += ` AND categorie = $${paramCount++}`;
-      params.push(categorie);
+    if (categorie_id) {
+      query += ` AND categorie_id = ${addParam(params, categorie_id)}`;
     }
 
     if (search) {
-      query += ` AND (nom ILIKE $${paramCount++} OR description ILIKE $${paramCount})`;
-      params.push(`%${search}%`, `%${search}%`);
-      paramCount += 2;
+      const like = `%${search}%`;
+      query += ` AND (nom ILIKE ${addParam(params, like)} OR description ILIKE ${addParam(params, like)})`;
     }
 
-    query += ` ORDER BY id DESC LIMIT $${paramCount++} OFFSET $${paramCount}`;
-    params.push(limit, offset);
+    query += ` ORDER BY id DESC LIMIT ${addParam(params, limit)} OFFSET ${addParam(params, offset)}`;
 
     const result = await db.query(query, params);
 
     return res.json({
       success: true,
       message: 'Products retrieved successfully',
-      data: result.rows.map(p => ({
-        id: p.id,
-        nom: p.nom,
-        description: p.description,
-        prix: p.prix,
-        quantite: p.stock,
-        status: p.disponible ? 'active' : 'inactive',
-        categorie: p.categorie,
-        image: p.image_principale,
-        promotionPercent: p.prix_promotion ? Math.round((1 - p.prix_promotion / p.prix) * 100) : 0,
-        fournisseur_id: p.fournisseur_id,
-        created_at: p.created_at
-      }))
+      data: result.rows.map(p => {
+        const prix = p.prix != null ? parseFloat(p.prix) : null;
+        const prixPromo = p.prix_promotion != null ? parseFloat(p.prix_promotion) : null;
+        const promotionPercent = (prix && prixPromo && prix > 0) ? Math.round((1 - prixPromo / prix) * 100) : 0;
+
+        return {
+          id: p.id,
+          nom: p.nom,
+          description: p.description,
+          prix,
+          quantite: p.stock,
+          status: p.disponible ? 'active' : 'inactive',
+          categorie_id: p.categorie_id || null,
+          image: p.image_principale || p.image_url || null,
+          promotionPercent,
+          fournisseur_id: p.fournisseur_id,
+          prix_promotion: prixPromo,
+        };
+      })
     });
   } catch (error) {
     console.error('Error fetching products:', error);
@@ -58,29 +66,29 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET product by ID
+// GET by id
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query('SELECT * FROM produits WHERE id = $1', [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
-    }
-
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Product not found' });
     const p = result.rows[0];
+    const prix = p.prix != null ? parseFloat(p.prix) : null;
+    const prixPromo = p.prix_promotion != null ? parseFloat(p.prix_promotion) : null;
+    const promotionPercent = (prix && prixPromo && prix > 0) ? Math.round((1 - prixPromo / prix) * 100) : 0;
+
     return res.json({
       success: true,
       data: {
         id: p.id,
         nom: p.nom,
         description: p.description,
-        prix: p.prix,
+        prix,
         quantite: p.stock,
         status: p.disponible ? 'active' : 'inactive',
-        categorie: p.categorie,
-        image: p.image_principale,
-        promotionPercent: p.prix_promotion ? Math.round((1 - p.prix_promotion / p.prix) * 100) : 0,
+        categorie_id: p.categorie_id || null,
+        image: p.image_principale || p.image_url || null,
+        promotionPercent,
         fournisseur_id: p.fournisseur_id,
         created_at: p.created_at,
         updated_at: p.updated_at
@@ -96,24 +104,25 @@ router.get('/:id', async (req, res) => {
 router.get('/supplier/:fournisseur_id', async (req, res) => {
   try {
     const { fournisseur_id } = req.params;
-    const result = await db.query(
-      'SELECT * FROM produits WHERE fournisseur_id = $1 ORDER BY created_at DESC',
-      [fournisseur_id]
-    );
-
+    const result = await db.query('SELECT * FROM produits WHERE fournisseur_id = $1 ORDER BY id DESC', [fournisseur_id]);
     return res.json({
       success: true,
-      data: result.rows.map(p => ({
-        id: p.id,
-        nom: p.nom,
-        description: p.description,
-        prix: p.prix,
-        quantite: p.stock,
-        status: p.disponible ? 'active' : 'inactive',
-        categorie: p.categorie,
-        image: p.image_principale,
-        promotionPercent: p.prix_promotion ? Math.round((1 - p.prix_promotion / p.prix) * 100) : 0
-      }))
+      data: result.rows.map(p => {
+        const prix = p.prix != null ? parseFloat(p.prix) : null;
+        const prixPromo = p.prix_promotion != null ? parseFloat(p.prix_promotion) : null;
+        const promotionPercent = (prix && prixPromo && prix > 0) ? Math.round((1 - prixPromo / prix) * 100) : 0;
+        return {
+          id: p.id,
+          nom: p.nom,
+          description: p.description,
+          prix,
+          quantite: p.stock,
+          status: p.disponible ? 'active' : 'inactive',
+          categorie_id: p.categorie_id || null,
+          image: p.image_principale || p.image_url || null,
+          promotionPercent
+        };
+      })
     });
   } catch (error) {
     console.error('Error fetching supplier products:', error);

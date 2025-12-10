@@ -1,8 +1,8 @@
 import { Injectable, OnDestroy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, interval, Subscription } from 'rxjs';
+import { BehaviorSubject, Observable, interval, Subscription, of } from 'rxjs';
 import { switchMap, catchError } from 'rxjs/operators';
-import { AuthService } from './authentification'; 
+import { AuthService } from './authentification';
 import { ToastService } from './toast';
 
 export interface Notification {
@@ -18,11 +18,22 @@ export interface Notification {
   date_lecture: string | null;
 }
 
+/** <-- Ajout de l'interface manquante */
+interface NotificationResponse {
+  success: boolean;
+  notifications?: Notification[];
+  unread_count?: number;
+  message?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class NotificationService implements OnDestroy {
-  private apiUrl = `http://localhost:3000/api/notifications`; // <-- CORRECT
+  fetchNotifications() {
+    throw new Error('Method not implemented.');
+  }
+  private apiUrl = `http://localhost:3000/api/notifications`;
   private notificationsSubject = new BehaviorSubject<Notification[]>([]);
   private unreadCountSubject = new BehaviorSubject<number>(0);
 
@@ -35,9 +46,8 @@ export class NotificationService implements OnDestroy {
   constructor(
     private http: HttpClient,
     private authService: AuthService,
-    private toast: ToastService 
+    private toast: ToastService
   ) {
-
     this.authSub = this.authService.currentUser.subscribe(user => {
       if (user) this.startPolling();
       else this.stopPolling();
@@ -46,25 +56,27 @@ export class NotificationService implements OnDestroy {
 
   private startPolling(): void {
     if (this.pollingSub && !this.pollingSub.closed) return;
-    
-    // Verify token exists before starting polling
-    const token = sessionStorage.getItem('session_token');
+
+    const token = this.authService.currentToken;
     if (!token) {
       console.warn('No session token found. Polling will start when token is available.');
       return;
     }
-    
-    // call immediately and then every 30s
+
+    // call immediately then every 30s
     this.loadNotifications();
+
     this.pollingSub = interval(30000).pipe(
-      switchMap(() => this.http.get<any>(this.apiUrl).pipe(
-        catchError(err => {
-          // handle error locally (don't break the stream)
-          console.error('Erreur polling notifications', err);
-          return [ { success: false } as any ];
-        })
-      ))
-    ).subscribe((resp: any) => {
+      switchMap(() =>
+        this.http.get<NotificationResponse>(this.apiUrl, this.authService.getAuthHeaders()).pipe(
+          catchError(err => {
+            console.error('Erreur polling notifications', err);
+            // return un NotificationResponse typé pour que le subscriber reçoive toujours le bon type
+            return of({ success: false } as NotificationResponse);
+          })
+        )
+      )
+    ).subscribe((resp: NotificationResponse) => {
       if (resp && resp.success) {
         this.notificationsSubject.next(resp.notifications || []);
         this.unreadCountSubject.next(resp.unread_count ?? 0);
@@ -81,59 +93,63 @@ export class NotificationService implements OnDestroy {
     this.unreadCountSubject.next(0);
   }
 
-  // chargement manuel (ex: onClick pour refresh)
   loadNotifications(limit = 20, offset = 0, lu?: boolean): void {
-    const params: any = { limit, offset };
-    if (lu !== undefined) params.lu = lu;
-    this.http.get<any>(this.apiUrl, { params }).subscribe({
-      next: resp => {
-        if (resp?.success) {
-          this.notificationsSubject.next(resp.notifications || []);
-          this.unreadCountSubject.next(resp.unread_count ?? 0);
-        } else {
-          // Erreur métier
-          this.toast.showToast(resp.message || 'Erreur récupération notifications', 'error');
-        }
-      },
-      error: err => {
-        console.error('Erreur loadNotifications', err);
-        if (err.status === 401) {
-          // token invalide -> logout
-          this.toast.showToast('Session expirée. Veuillez vous reconnecter.', 'warning');
-          this.authService.logout();
-        } else if (err.status === 404) {
-          this.toast.showToast('Notifications introuvables.', 'error');
-        } else {
-          this.toast.showToast('Impossible de charger les notifications.', 'error');
-        }
+  const params: any = { limit: String(limit), offset: String(offset) };
+  if (lu !== undefined) params.lu = String(lu);
+
+  // getAuthHeaders() retourne { headers?: HttpHeaders }
+  const authHeaders = this.authService.getAuthHeaders();
+  const headers = authHeaders?.headers ?? undefined;
+
+  // IMPORTANT : observe: 'body' force l'overload qui retourne Observable<NotificationResponse>
+  const options = { params, headers, observe: 'body' as const };
+
+  this.http.get<NotificationResponse>(this.apiUrl, options).subscribe({
+    next: (resp: NotificationResponse) => {
+      if (resp?.success) {
+        this.notificationsSubject.next(resp.notifications || []);
+        this.unreadCountSubject.next(resp.unread_count ?? 0);
+      } else {
+        this.toast.showToast(resp?.message || 'Erreur récupération notifications', 'error');
       }
-    });
+    },
+    error: err => {
+      console.error('Erreur loadNotifications', err);
+      if (err.status === 401) {
+        this.toast.showToast('Session expirée. Veuillez vous reconnecter.', 'warning');
+        this.authService.logout();
+      } else if (err.status === 404) {
+        this.toast.showToast('Notifications introuvables.', 'error');
+      } else {
+        this.toast.showToast('Impossible de charger les notifications.', 'error');
+      }
+    }
+  });
+}
+
+
+  getNotifications(limit: number = 20, offset: number = 0): Observable<NotificationResponse> {
+    const options = { params: { limit: String(limit), offset: String(offset) }, ...this.authService.getAuthHeaders() };
+    return this.http.get<NotificationResponse>(this.apiUrl, options);
   }
 
-  getNotifications(limit: number = 20, offset: number = 0): Observable<any> {
-    return this.http.get<any>(`${this.apiUrl}?limit=${limit}&offset=${offset}`);
+  markAsRead(notificationId: string): Observable<NotificationResponse> {
+    return this.http.put<NotificationResponse>(`${this.apiUrl}/${notificationId}/read`, {}, this.authService.getAuthHeaders());
   }
 
-  markAsRead(notificationId: string): Observable<any> {
-    return this.http.put<any>(`${this.apiUrl}/${notificationId}/read`, {});
+  markAllAsRead(): Observable<NotificationResponse> {
+    return this.http.put<NotificationResponse>(`${this.apiUrl}/read-all`, {}, this.authService.getAuthHeaders());
   }
 
-  markAllAsRead(): Observable<any> {
-    return this.http.put<any>(`${this.apiUrl}/read-all`, {});
+  deleteNotification(notificationId: string): Observable<NotificationResponse> {
+    return this.http.delete<NotificationResponse>(`${this.apiUrl}/${notificationId}`, this.authService.getAuthHeaders());
   }
 
-  deleteNotification(notificationId: string): Observable<any> {
-    return this.http.delete<any>(`${this.apiUrl}/${notificationId}`);
-  }
-
-  // toast helper si tu n'as pas de service externe
   showToast(message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info'): void {
-    // délègue si tu as un service global, sinon re-utilise la méthode existante
     if (this.toast && (this.toast as any).showToast) {
       (this.toast as any).showToast(message, type);
       return;
     }
-    // fallback DOM (ton implémentation d'origine)
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.innerHTML = `<div class="toast-content"><span class="toast-icon">${this.getToastIcon(type)}</span><span class="toast-message">${message}</span></div>`;

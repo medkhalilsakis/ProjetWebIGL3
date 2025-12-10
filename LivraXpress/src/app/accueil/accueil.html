@@ -9,7 +9,7 @@
 
       <nav class="main-nav">
         <a routerLink="/" class="nav-item active">Accueil</a>
-        <a routerLink="/services" class="nav-item">Services</a>
+        <a routerLink="/produits" class="nav-item">Produits</a>
         <a routerLink="/cities" class="nav-item">Villes</a>
         <a routerLink="/contact" class="nav-item">Contact</a>
       </nav>
@@ -26,6 +26,53 @@
       </div>
     </div>
   </header>
+
+  <!-- Floating Cart Toggle -->
+  <button class="floating-cart-toggle" (click)="toggleCartPanel()">
+    <i class="fas fa-shopping-cart"></i>
+    <span class="cart-badge" *ngIf="cartCount > 0">{{ cartCount }}</span>
+  </button>
+
+  <!-- Floating Cart Panel -->
+  <aside class="floating-cart-panel" *ngIf="showCartPanel">
+    <div class="cart-header">
+      <div>
+        <h3>Mon panier</h3>
+        <p class="cart-subtitle">{{ cart.length }} article(s)</p>
+      </div>
+      <button class="cart-close" (click)="toggleCartPanel()" aria-label="Fermer le panier">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <div class="cart-items" *ngIf="cart.length > 0; else cartEmpty">
+      <div class="cart-item" *ngFor="let item of cart">
+        <div class="cart-item-info">
+          <span class="cart-item-name">{{ item.product.nom }}</span>
+          <span class="cart-item-price">
+            {{ (item.product.prix_promotion || item.product.prix) | currency:'TND':'symbol' }} x {{ item.quantity }}
+          </span>
+        </div>
+      </div>
+    </div>
+    <ng-template #cartEmpty>
+      <div class="cart-empty">
+        <i class="fas fa-box-open"></i>
+        <p>Votre panier est vide</p>
+      </div>
+    </ng-template>
+
+    <div class="cart-footer">
+      <div class="cart-total">
+        <span>Total</span>
+        <strong>{{ cartTotal() | currency:'TND':'symbol' }}</strong>
+      </div>
+      <button class="btn-checkout" [disabled]="cart.length === 0" (click)="checkoutCart()">
+        <i class="fas fa-lock"></i>
+        Finaliser ma commande
+      </button>
+    </div>
+  </aside>
 
   <!-- Hero Section -->
   <section class="hero-section">

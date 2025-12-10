@@ -1,0 +1,360 @@
+<!-- Header Navigation (same as accueil) -->
+<header class="main-header">
+  <div class="container">
+    <div class="logo-section">
+      <mat-icon class="logo-icon">local_shipping</mat-icon>
+      <span class="logo-text">Livra<span class="logo-highlight">Xpress</span></span>
+    </div>
+
+    <nav class="main-nav">
+      <a routerLink="/" class="nav-item">Accueil</a>
+      <a routerLink="/produits" class="nav-item active">Produits</a>
+      <a routerLink="/cities" class="nav-item">Villes</a>
+      <a routerLink="/contact" class="nav-item">Contact</a>
+    </nav>
+
+    <div class="auth-buttons">
+      <button mat-stroked-button routerLink="/login" class="signin-btn">
+        <mat-icon>login</mat-icon>
+        <span>Connexion</span>
+      </button>
+      <button mat-raised-button routerLink="/register" class="signup-btn">
+        <mat-icon>person_add</mat-icon>
+        <span>Inscription</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="list-produits-container">
+  <!-- Header -->
+  <header class="products-header">
+    <div class="header-content">
+      <div class="header-title">
+        <h1>Nos Produits</h1>
+        <p class="subtitle">Découvrez notre sélection de produits disponibles à la livraison</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn-icon" (click)="toggleViewMode()" [title]="viewMode === 'grid' ? 'Vue liste' : 'Vue grille'">
+          <i class="fas" [ngClass]="viewMode === 'grid' ? 'fa-list' : 'fa-th'"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="page-with-cart">
+    <div class="page-main">
+
+  <!-- Search Bar -->
+  <section class="search-section">
+    <div class="search-container">
+      <div class="search-input-wrapper">
+        <i class="fas fa-search search-icon"></i>
+        <input 
+          type="text" 
+          class="search-input" 
+          placeholder="Rechercher un produit..." 
+          [(ngModel)]="searchQuery"
+          (input)="onSearchChange(searchQuery)"
+        />
+        <button 
+          class="clear-search" 
+          *ngIf="searchQuery" 
+          (click)="clearSearch()"
+          title="Effacer la recherche"
+        >
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <button class="btn-filter-toggle" (click)="toggleFilters()">
+        <i class="fas fa-filter"></i>
+        <span>Filtres</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Filters Panel -->
+  <section class="filters-section" *ngIf="showFilters">
+    <div class="filters-container">
+      <div class="filter-group">
+        <label class="filter-label">Catégorie</label>
+        <select 
+          class="filter-select" 
+          [(ngModel)]="selectedCategory"
+          (change)="onCategoryChange(selectedCategory)"
+        >
+          <option [ngValue]="null">Toutes les catégories</option>
+          <option *ngFor="let cat of categories" [ngValue]="cat.id">{{ cat.name }}</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Prix minimum (TND)</label>
+        <input 
+          type="number" 
+          class="filter-input" 
+          placeholder="Min"
+          [(ngModel)]="filters.prixMin"
+          (change)="onPriceRangeChange()"
+          min="0"
+        />
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Prix maximum (TND)</label>
+        <input 
+          type="number" 
+          class="filter-input" 
+          placeholder="Max"
+          [(ngModel)]="filters.prixMax"
+          (change)="onPriceRangeChange()"
+          min="0"
+        />
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Trier par</label>
+        <select 
+          class="filter-select" 
+          [(ngModel)]="filters.sortBy"
+          (change)="onSortChange(filters.sortBy)"
+        >
+          <option value="recent">Plus récents</option>
+          <option value="price_asc">Prix croissant</option>
+          <option value="price_desc">Prix décroissant</option>
+          <option value="popular">Populaires</option>
+          <option value="promotion">Promotions</option>
+        </select>
+      </div>
+
+      <div class="filter-group checkbox-group">
+        <label class="checkbox-label">
+          <input 
+            type="checkbox" 
+            [(ngModel)]="filters.showPromotionsOnly"
+            (change)="togglePromotionsOnly()"
+          />
+          <span>Promotions uniquement</span>
+        </label>
+      </div>
+
+      <button class="btn-reset" (click)="resetFilters()">
+        <i class="fas fa-redo"></i>
+        <span>Réinitialiser</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Recommended Products Section -->
+  <section class="recommended-section" *ngIf="recommendedProducts.length > 0 && !filters.search && !filters.categorie_id">
+    <div class="section-header">
+      <h2 class="section-title">
+        <i class="fas fa-star"></i>
+        Recommandations
+      </h2>
+    </div>
+    <div class="products-grid recommended-grid">
+      <div 
+        *ngFor="let product of recommendedProducts" 
+        class="product-card recommended"
+        (click)="goToProduct(product.id)"
+      >
+        <div class="product-badge" *ngIf="hasPromotion(product)">
+          <span>-{{ product.promotionPercent }}%</span>
+        </div>
+        <div class="product-image-wrapper">
+          <img 
+            [src]="resolveImage(product.image) || 'assets/placeholder-product.png'" 
+            [alt]="product.nom"
+            class="product-image"
+            (error)="$event.target.src='assets/placeholder-product.png'"
+          />
+        </div>
+        <div class="product-info">
+          <h3 class="product-name">{{ product.nom }}</h3>
+          <p class="product-description" *ngIf="product.description">
+            {{ product.description.length > 60 ? (product.description | slice:0:60) + '...' : product.description }}
+          </p>
+          <div class="product-price">
+            <span class="price-current">{{ formatCurrency(getPrice(product)) }}</span>
+            <span class="price-original" *ngIf="hasPromotion(product)">
+              {{ formatCurrency(product.prix) }}
+            </span>
+          </div>
+          <button class="btn-add-cart" (click)="addToCart(product); $event.stopPropagation()">
+            <i class="fas fa-cart-plus"></i>
+            <span>Ajouter</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Products List -->
+  <section class="products-section">
+    <div class="section-header" *ngIf="displayedProducts.length > 0 || loading">
+      <h2 class="section-title">
+        <span *ngIf="filters.search">Résultats pour "{{ filters.search }}"</span>
+        <span *ngIf="!filters.search && filters.categorie_id">
+          {{ selectedCategoryName }}
+        </span>
+        <span *ngIf="!filters.search && !filters.categorie_id">Tous les produits</span>
+        <span class="product-count">({{ allProducts.length }})</span>
+      </h2>
+    </div>
+
+    <!-- Loading State -->
+    <div class="loading-state" *ngIf="loading">
+      <div class="spinner"></div>
+      <p>Chargement des produits...</p>
+    </div>
+
+    <!-- Error State -->
+    <div class="error-state" *ngIf="error && !loading">
+      <i class="fas fa-exclamation-circle"></i>
+      <p>{{ error }}</p>
+      <button class="btn-retry" (click)="loadProducts()">Réessayer</button>
+    </div>
+
+    <!-- Empty State -->
+    <div class="empty-state" *ngIf="!loading && !error && displayedProducts.length === 0">
+      <i class="fas fa-search"></i>
+      <h3>Aucun produit trouvé</h3>
+      <p>Essayez de modifier vos critères de recherche ou vos filtres.</p>
+      <button class="btn-reset-filters" (click)="resetFilters()">Réinitialiser les filtres</button>
+    </div>
+
+    <!-- Products Grid/List -->
+    <div 
+      class="products-container" 
+      [ngClass]="{'grid-view': viewMode === 'grid', 'list-view': viewMode === 'list'}"
+      *ngIf="!loading && !error && displayedProducts.length > 0"
+    >
+      <div 
+        *ngFor="let product of displayedProducts" 
+        class="product-card"
+        [ngClass]="{'has-promotion': hasPromotion(product)}"
+        (click)="goToProduct(product.id)"
+      >
+        <div class="product-badge" *ngIf="hasPromotion(product)">
+          <span>-{{ product.promotionPercent }}%</span>
+        </div>
+        <div class="product-image-wrapper">
+          <img 
+            [src]="resolveImage(product.image) || 'assets/placeholder-product.png'" 
+            [alt]="product.nom"
+            class="product-image"
+            (error)="$event.target.src='assets/placeholder-product.png'"
+          />
+          <div class="product-overlay">
+            <button class="btn-quick-view" (click)="goToProduct(product.id); $event.stopPropagation()">
+              <i class="fas fa-eye"></i>
+            </button>
+            <button class="btn-quick-add" (click)="addToCart(product); $event.stopPropagation()">
+              <i class="fas fa-cart-plus"></i>
+            </button>
+          </div>
+        </div>
+        <div class="product-info">
+          <h3 class="product-name">{{ product.nom }}</h3>
+          <p class="product-description" *ngIf="product.description && viewMode === 'list'">
+            {{ product.description }}
+          </p>
+          <div class="product-meta">
+            <span class="product-stock" *ngIf="product.quantite > 0">
+              <i class="fas fa-check-circle"></i>
+              En stock
+            </span>
+            <span class="product-stock out" *ngIf="product.quantite === 0">
+              <i class="fas fa-times-circle"></i>
+              Rupture de stock
+            </span>
+          </div>
+          <div class="product-price">
+            <span class="price-current">{{ formatCurrency(getPrice(product)) }}</span>
+            <span class="price-original" *ngIf="hasPromotion(product)">
+              {{ formatCurrency(product.prix) }}
+            </span>
+          </div>
+          <button class="btn-add-cart" (click)="addToCart(product); $event.stopPropagation()">
+            <i class="fas fa-cart-plus"></i>
+            <span>Ajouter au panier</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" *ngIf="!loading && !error && displayedProducts.length > 0 && totalPages > 1">
+      <button 
+        class="pagination-btn" 
+        (click)="previousPage()" 
+        [disabled]="currentPage === 1"
+      >
+        <i class="fas fa-chevron-left"></i>
+        <span>Précédent</span>
+      </button>
+      
+      <div class="pagination-pages">
+        <button 
+          *ngFor="let page of pagesArray" 
+          class="pagination-page"
+          [class.active]="currentPage === page"
+          (click)="goToPage(page)"
+        >
+          {{ page }}
+        </button>
+      </div>
+      
+      <button 
+        class="pagination-btn" 
+        (click)="nextPage()" 
+        [disabled]="currentPage === totalPages"
+      >
+        <span>Suivant</span>
+        <i class="fas fa-chevron-right"></i>
+      </button>
+    </div>
+  </section>
+    </div>
+
+    <aside class="cart-panel">
+      <div class="cart-header">
+        <div>
+          <h3>Mon panier</h3>
+          <p class="cart-subtitle">{{ cart.length }} article(s)</p>
+        </div>
+        <i class="fas fa-shopping-cart"></i>
+      </div>
+
+      <div class="cart-items" *ngIf="cart.length > 0; else cartEmpty">
+        <div class="cart-item" *ngFor="let item of cart">
+          <div class="cart-item-info">
+            <span class="cart-item-name">{{ item.product.nom }}</span>
+            <span class="cart-item-price">{{ formatCurrency(getPrice(item.product)) }} x {{ item.quantity }}</span>
+          </div>
+          <button class="cart-remove" (click)="removeFromCart(item.product.id)" title="Supprimer">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      </div>
+      <ng-template #cartEmpty>
+        <div class="cart-empty">
+          <i class="fas fa-box-open"></i>
+          <p>Votre panier est vide</p>
+        </div>
+      </ng-template>
+
+      <div class="cart-footer">
+        <div class="cart-total">
+          <span>Total</span>
+          <strong>{{ formatCurrency(cartTotal()) }}</strong>
+        </div>
+        <button class="btn-checkout" [disabled]="cart.length === 0" (click)="checkoutCart()">
+          <i class="fas fa-lock"></i>
+          Finaliser ma commande
+        </button>
+      </div>
+    </aside>
+  </div>
+</div>

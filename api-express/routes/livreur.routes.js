@@ -16,9 +16,7 @@ router.get('/profile', authMiddleware, checkRole('livreur'), async (req, res) =>
       [req.user.user_id]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Livreur profile not found' });
-    }
+    if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'Livreur profile not found' });
 
     const livreur = result.rows[0];
     return res.json({
@@ -50,8 +48,8 @@ router.get('/commandes/disponibles', authMiddleware, checkRole('livreur'), async
        FROM commandes c
        JOIN fournisseurs f ON c.fournisseur_id = f.id
        JOIN clients cl ON c.client_id = cl.id
-       WHERE c.statut = 'prete_pour_livraison' AND c.livreur_id IS NULL
-       ORDER BY c.date_commande ASC`,
+       WHERE c.statut = 'pret_pour_livraison' AND c.livreur_id IS NULL
+       ORDER BY c.date_commande ASC`
     );
 
     return res.json({
@@ -73,20 +71,14 @@ router.get('/commandes/disponibles', authMiddleware, checkRole('livreur'), async
 // GET livreur active deliveries
 router.get('/commandes/actives', authMiddleware, checkRole('livreur'), async (req, res) => {
   try {
-    const livreurResult = await db.query(
-      'SELECT id FROM livreurs WHERE utilisateur_id = $1',
-      [req.user.user_id]
-    );
-
-    if (livreurResult.rows.length === 0) {
-      return res.json({ success: true, data: [] });
-    }
+    const livreurResult = await db.query('SELECT id FROM livreurs WHERE utilisateur_id = $1 LIMIT 1', [req.user.user_id]);
+    if (livreurResult.rows.length === 0) return res.json({ success: true, data: [] });
 
     const result = await db.query(
       `SELECT c.*, f.nom_entreprise
        FROM commandes c
        JOIN fournisseurs f ON c.fournisseur_id = f.id
-       WHERE c.livreur_id = $1 AND c.statut IN ('en_livraison', 'prete_pour_livraison')
+       WHERE c.livreur_id = $1 AND c.statut IN ('en_livraison', 'pret_pour_livraison')
        ORDER BY c.date_commande DESC`,
       [livreurResult.rows[0].id]
     );
@@ -113,17 +105,22 @@ router.post('/commandes/:commande_id/accepter', authMiddleware, checkRole('livre
   try {
     const { commande_id } = req.params;
 
-    const livreurResult = await db.query(
-      'SELECT id FROM livreurs WHERE utilisateur_id = $1',
-      [req.user.user_id]
+    const livreurResult = await db.query('SELECT id FROM livreurs WHERE utilisateur_id = $1 LIMIT 1', [req.user.user_id]);
+    if (livreurResult.rows.length === 0) return res.status(404).json({ success: false, message: 'Livreur non trouvé' });
+    const livreurId = livreurResult.rows[0].id;
+
+    // Tentative atomique : n'accepte que si commande est prête et sans livreur
+    const updateRes = await db.query(
+      `UPDATE commandes
+       SET livreur_id = $1, statut = 'acceptee_par_livreur', updated_at = NOW()
+       WHERE id = $2 AND statut = 'pret_pour_livraison' AND (livreur_id IS NULL)
+       RETURNING id`,
+      [livreurId, commande_id]
     );
 
-    await db.query(
-      `UPDATE commandes 
-       SET livreur_id = $1, statut = 'acceptee_par_livreur'
-       WHERE id = $2`,
-      [livreurResult.rows[0].id, commande_id]
-    );
+    if (updateRes.rowCount === 0) {
+      return res.status(409).json({ success: false, message: 'Commande non disponible ou déjà assignée' });
+    }
 
     return res.json({ success: true, message: 'Delivery accepted' });
   } catch (error) {
@@ -138,16 +135,18 @@ router.patch('/commandes/:commande_id/statut', authMiddleware, checkRole('livreu
     const { commande_id } = req.params;
     const { statut, localisation } = req.body;
 
-    let query = 'UPDATE commandes SET statut = $1';
-    const params = [statut, commande_id];
+    if (!statut) return res.status(400).json({ success: false, message: 'Statut requis' });
 
-    if (localisation) {
-      query += `, coordonnees_livraison = ST_SetSRID(ST_MakePoint($3, $4), 4326)`;
-      params.splice(1, 0, localisation.longitude, localisation.latitude);
+    const setClauses = ['statut = $1', 'updated_at = NOW()'];
+    const params = [statut];
+
+    if (localisation && localisation.longitude != null && localisation.latitude != null) {
+      setClauses.push(`coordonnees_livraison = ST_SetSRID(ST_MakePoint($2, $3), 4326)`);
+      params.push(localisation.longitude, localisation.latitude);
     }
 
-    query += ` WHERE id = $${params.length}`;
     params.push(commande_id);
+    const query = `UPDATE commandes SET ${setClauses.join(', ')} WHERE id = $${params.length}`;
 
     await db.query(query, params);
 
@@ -161,14 +160,8 @@ router.patch('/commandes/:commande_id/statut', authMiddleware, checkRole('livreu
 // GET delivery history
 router.get('/historique', authMiddleware, checkRole('livreur'), async (req, res) => {
   try {
-    const livreurResult = await db.query(
-      'SELECT id FROM livreurs WHERE utilisateur_id = $1',
-      [req.user.user_id]
-    );
-
-    if (livreurResult.rows.length === 0) {
-      return res.json({ success: true, data: [] });
-    }
+    const livreurResult = await db.query('SELECT id FROM livreurs WHERE utilisateur_id = $1 LIMIT 1', [req.user.user_id]);
+    if (livreurResult.rows.length === 0) return res.json({ success: true, data: [] });
 
     const result = await db.query(
       `SELECT c.*, f.nom_entreprise

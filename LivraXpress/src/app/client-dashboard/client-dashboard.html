@@ -1,475 +1,572 @@
-<!-- Advanced Customer Dashboard -->
-<div class="dashboard-wrapper">
-  <!-- Loading State -->
-  <div *ngIf="loading" class="loader-container">
-    <div class="spinner">Loading your dashboard...</div>
-  </div>
-
-  <div *ngIf="!loading" class="dashboard-content">
-    <!-- Header with Tabs -->
-    <div class="dashboard-header">
-      <div class="header-top">
-        <h1>🚀 Welcome {{ currentUser?.nom_complet }}!</h1>
-        <button class="logout-btn" (click)="logout()" title="Logout">🚪 Logout</button>
-      </div>
-      <div class="tab-navigation">
-        <button [class.active]="activeTab === 'home'" (click)="switchTab('home')">🏠 Home</button>
-        <button [class.active]="activeTab === 'tracking'" (click)="switchTab('tracking')">📍 Tracking</button>
-        <button [class.active]="activeTab === 'history'" (click)="switchTab('history')">📋 History</button>
-        <button [class.active]="activeTab === 'loyalty'" (click)="switchTab('loyalty')">⭐ Loyalty</button>
-        <button [class.active]="activeTab === 'payments'" (click)="switchTab('payments')">💳 Payments</button>
-      </div>
-    </div>
-
-    <!-- HOME TAB -->
-    <div *ngIf="activeTab === 'home'" class="tab-content">
-      <!-- Quick Stats -->
-      <div class="quick-stats">
-        <div class="stat-box">
-          <span class="icon">🎯</span>
-          <span class="value">{{ stats.montant_economise }} DH</span>
-          <span class="label">Saved</span>
+<div class="dashboard">
+  <!-- Header -->
+  <header class="dashboard-header">
+    <div class="header-left">
+      <div class="profile-section">
+        <div class="avatar-container">
+          <img [src]="resolveImage(currentUser?.photo_profil)" alt="Avatar" class="avatar" />
+          <label class="avatar-upload">
+            <input type="file" accept="image/*" (change)="onProfileImageSelected($event)" />
+            <span class="upload-icon">📷</span>
+          </label>
         </div>
-        <div class="stat-box">
-          <span class="icon">⏱️</span>
-          <span class="value">{{ stats.temps_economise }}h</span>
-          <span class="label">Time Saved</span>
-        </div>
-        <div class="stat-box">
-          <span class="icon">📦</span>
-          <span class="value">{{ stats.total_commandes }}</span>
-          <span class="label">Orders</span>
-        </div>
-        <div class="stat-box">
-          <span class="icon">🌱</span>
-          <span class="value">{{ trackingStats.co2Saved }} kg</span>
-          <span class="label">CO₂ Saved</span>
-        </div>
-      </div>
-
-      <!-- Smart Recommendations -->
-      <div class="section">
-        <h2>🎁 Personalized Recommendations</h2>
-        <div class="recommendations">
-          <div *ngFor="let rec of recommendations" class="rec-card">
-            <span class="emoji">{{ rec.emoji }}</span>
-            <p>{{ rec.text }}</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Active Orders -->
-      <div class="section">
-        <h2>📍 Active Orders</h2>
-        <div *ngIf="activeOrder" class="active-order">
-          <div class="driver-info">
-            <h3>{{ activeOrder.driver.nom }}</h3>
-            <p>📊 {{ activeOrder.driver.stats.ordersDelivered }} deliveries • {{ activeOrder.driver.stats.satisfaction }}% satisfaction</p>
-            <p>{{ getTrafficEmoji(activeOrder.trafficCondition) }} Traffic: {{ activeOrder.trafficCondition }}</p>
-          </div>
-          <div class="eta">Arriving at {{ activeOrder.estimatedArrival | date:'HH:mm' }}</div>
-        </div>
-        <div *ngIf="!activeOrder" class="empty">No active orders</div>
-      </div>
-
-      <!-- Recent Orders -->
-      <div class="section">
-        <h2>📦 Recent Orders</h2>
-        <div *ngIf="recentCommandes.length > 0" class="orders-list">
-          <div *ngFor="let order of recentCommandes" class="order-card">
-            <div class="order-number">#{{ order.numero_suivi }}</div>
-            <div class="order-info">
-              <p class="restaurant">{{ order.fournisseur_nom }}</p>
-              <p class="amount">{{ order.montant_total }} DH</p>
-            </div>
-            <span [class]="'status ' + getStatusBadgeClass(order.statut)">{{ getStatusLabel(order.statut) }}</span>
-          </div>
-        </div>
-        <div *ngIf="recentCommandes.length === 0" class="empty">No recent orders</div>
-      </div>
-
-      <!-- Favorites -->
-      <div class="section">
-        <h2>❤️ Favorite Restaurants</h2>
-        <div class="favorites-grid">
-          <div *ngFor="let fav of fournisseursFavoris" class="fav-card">
-            <img [src]="fav.photo_couverture" [alt]="fav.nom_entreprise" class="fav-image">
-            <h4>{{ fav.nom_entreprise }}</h4>
-            <p>⭐ {{ fav.note_moyenne }} • {{ fav.temps_preparation_moyen }}min</p>
-          </div>
+        <div>
+          <h1>{{ currentUser?.nom_complet || 'Client' }}</h1>
+          <p class="subtitle">{{ currentUser?.email }}</p>
         </div>
       </div>
     </div>
-
-    <!-- TRACKING TAB -->
-    <div *ngIf="activeTab === 'tracking'" class="tab-content">
-      <h2>📍 Real-time Tracking</h2>
-      <div *ngIf="activeOrder" class="tracking-card">
-        <p>Driver location: {{ activeOrder.latitude | number:'1.5-5' }}, {{ activeOrder.longitude | number:'1.5-5' }}</p>
-        <p>Progress: {{ activeOrder.progress | number:'1.0-0' }}%</p>
-        <div class="progress-bar">
-          <div class="progress-fill" [style.width]="activeOrder.progress + '%'"></div>
-        </div>
-      </div>
-      <div *ngIf="!activeOrder" class="empty">No active order to track</div>
+    <div class="header-right">
+      <span class="badge badge-pill">Notifications: {{ unreadCount }}</span>
+      <button class="btn ghost" (click)="logout()">Déconnexion</button>
     </div>
+  </header>
 
-    <!-- HISTORY TAB -->
-    <div *ngIf="activeTab === 'history'" class="tab-content">
-      <h2>📋 Order History</h2>
-      <div class="filters">
-        <input type="text" placeholder="Search orders...">
-        <select>
-          <option>All Types</option>
-          <option>Restaurants</option>
-          <option>Groceries</option>
-        </select>
-      </div>
-      <div *ngIf="recentCommandes.length > 0" class="history-table">
-        <div class="table-header">
-          <div>Order</div>
-          <div>Restaurant</div>
-          <div>Amount</div>
-          <div>Status</div>
-        </div>
-        <div *ngFor="let order of recentCommandes" class="table-row">
-          <div>#{{ order.numero_suivi }}</div>
-          <div>{{ order.fournisseur_nom }}</div>
-          <div>{{ order.montant_total }} DH</div>
-          <div [class]="getStatusBadgeClass(order.statut)">{{ getStatusLabel(order.statut) }}</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- LOYALTY TAB -->
-    <div *ngIf="activeTab === 'loyalty'" class="tab-content">
-      <h2>⭐ Loyalty Program</h2>
-      
-      <!-- Level -->
-      <div class="loyalty-card">
-        <div class="level">
-          <span class="icon">{{ loyaltyLevel.icon }}</span>
-          <span class="name">{{ loyaltyLevel.level }} Level</span>
-        </div>
-        <div class="progress-bar">
-          <div class="progress-fill" [style.width]="loyaltyLevel.progress + '%'"></div>
-        </div>
-        <p class="text">{{ loyaltyLevel.progress }}% to {{ loyaltyLevel.nextLevel }}</p>
-      </div>
-
-      <!-- Badges -->
-      <div class="badges-section">
-        <h3>🏆 Badges</h3>
-        <div class="badges">
-          <div *ngFor="let badge of badges" class="badge" [class.locked]="!badge.achieved">
-            <span class="badge-icon">{{ badge.icon }}</span>
-            <p>{{ badge.name }}</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Rewards Wheel -->
-      <div class="rewards-section">
-        <h3>🎡 Spin the Wheel!</h3>
-        <button class="spin-btn" (click)="spinRewardsWheel()">🎰 SPIN NOW</button>
-      </div>
-    </div>
-
-    <!-- PAYMENTS TAB -->
-    <div *ngIf="activeTab === 'payments'" class="tab-content">
-      <h2>💳 Payment Management</h2>
-      
-      <!-- Wallet -->
-      <div class="wallet-card">
-        <h3>💰 Virtual Wallet</h3>
-        <p class="balance">Balance: 500 DH</p>
-        <div class="actions">
-          <button>Recharge</button>
-          <button>History</button>
-        </div>
-      </div>
-
-      <!-- Spending -->
-      <div class="spending-card">
-        <h3>📊 Monthly Spending</h3>
-        <p class="amount">{{ getMonthlySpending() }} DH</p>
-        <p class="avg">Avg per order: {{ (getMonthlySpending() / stats.total_commandes) | number:'1.0-0' }} DH</p>
-      </div>
-
-      <!-- Payment Methods -->
-      <div class="methods-card">
-        <h3>💳 Payment Methods</h3>
-        <div class="method">
-          <span>💳 Card •••• 4242</span>
-          <span class="default">Default</span>
-        </div>
-        <div class="method">
-          <span>📱 Mobile Money</span>
-        </div>
-      </div>
-
-      <!-- Options -->
-      <div class="payment-options">
-        <button (click)="toggleSplitPayment()">➗ Split Payment</button>
-        <button>⏰ Pay Later</button>
-        <button>📅 Loyalty Subscription</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Environmental Sidebar -->
-  <div class="eco-sidebar">
-    <h3>🌱 Environmental Impact</h3>
-    <p>Distance saved: {{ trackingStats.distanceTraveled }} km</p>
-    <p>CO₂ avoided: {{ calculateCO2Saved() }} kg</p>
-    <button (click)="offsetCO2Emissions()">Offset Emissions</button>
-  </div>
-</div>
-<div class="dashboard-container">
-  <div class="dashboard-header">
-    <div class="header-content">
-      <h1>Bonjour, {{ currentUser?.nom_complet }} ! 👋</h1>
-      <p>Bienvenue sur votre tableau de bord</p>
-    </div>
-    <button class="btn btn-primary">
-      <i class="icon-plus"></i>
-      Nouvelle commande
+  <!-- Navigation Tabs -->
+  <nav class="tab-nav">
+    <button [class.active]="activeTab === 'accueil'" (click)="switchTab('accueil')">Accueil</button>
+    <button class="ghost-link" (click)="goHome()">Accueil public</button>
+    <button class="ghost-link" (click)="goProducts()">Produits</button>
+    <button [class.active]="activeTab === 'commande_en_cours'" (click)="switchTab('commande_en_cours')">
+      Commande en cours
+      <span *ngIf="activeOrder" class="badge badge-danger">1</span>
     </button>
-  </div>
+    <button [class.active]="activeTab === 'historique'" (click)="switchTab('historique')">Historique</button>
+    <button [class.active]="activeTab === 'recommandations'" (click)="switchTab('recommandations')">Recommandations</button>
+    <button [class.active]="activeTab === 'preferences'" (click)="switchTab('preferences')">Préférences</button>
+    <button [class.active]="activeTab === 'portefeuille'" (click)="switchTab('portefeuille')">Portefeuille</button>
+    <button [class.active]="activeTab === 'support'" (click)="switchTab('support')">Support</button>
+    <button [class.active]="activeTab === 'fidelite'" (click)="switchTab('fidelite')">Fidélité</button>
+    <button [class.active]="activeTab === 'notifications'" (click)="switchTab('notifications')">Notifications</button>
+    <button [class.active]="activeTab === 'parametres'" (click)="switchTab('parametres')">Paramètres</button>
+  </nav>
 
-  <!-- Loading State -->
-  <div *ngIf="loading" class="loader-container">
-    <div class="loader"></div>
-  </div>
+  <!-- Accueil -->
+  <section *ngIf="activeTab === 'accueil'" class="panel">
+    <h2>Tableau de bord</h2>
 
-  <!-- Dashboard Content -->
-  <div *ngIf="!loading">
-    <!-- Stats Cards -->
+    <!-- Active Order Card -->
+    <div *ngIf="activeOrder" class="card active-order-card">
+      <h3>Commande en cours</h3>
+      <div class="order-status">
+        <span [class]="getStatusBadge(activeOrder.statut)">{{ getStatusLabel(activeOrder.statut) }}</span>
+        <span class="eta">Livraison estimée: {{ etaMinutes }} min</span>
+      </div>
+      <p><strong>{{ activeOrder.fournisseur }}</strong></p>
+      <p>{{ formatCurrency(activeOrder.montant_total) }}</p>
+      <button (click)="switchTab('commande_en_cours')">Voir détails</button>
+    </div>
+
+    <!-- Quick Stats -->
     <div class="stats-grid">
-      <div class="stat-card stat-primary">
-        <div class="stat-icon">
-          <i class="icon-shopping-cart"></i>
+      <div class="card stat">
+        <p class="label">Commandes totales</p>
+        <h3>{{ orders.length }}</h3>
+      </div>
+      <div class="card stat">
+        <p class="label">Portefeuille</p>
+        <h3>{{ formatCurrency(walletBalance) }}</h3>
+      </div>
+      <div class="card stat">
+        <p class="label">Points fidélité</p>
+        <h3>{{ loyalty.points }}</h3>
+        <small>Niveau {{ loyalty.level }}</small>
+      </div>
+    </div>
+
+    <!-- Addresses -->
+    <div class="card">
+      <h3>Adresses enregistrées</h3>
+      <div class="address-list">
+        <div *ngFor="let addr of addresses" class="address-item">
+          <div>
+            <strong>{{ addr.libelle || 'Adresse principale' }}</strong>
+            <p>{{ addr.rue }}, {{ addr.ville }} {{ addr.code_postal }}</p>
+          </div>
+          <button class="ghost danger" (click)="deleteAddress(addr.id)">Supprimer</button>
         </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ stats.total_commandes }}</div>
-          <div class="stat-label">Total Commandes</div>
+      </div>
+      <button class="ghost" (click)="showAddressForm = !showAddressForm">+ Ajouter une adresse</button>
+    </div>
+
+    <!-- Payment Methods -->
+    <div class="card">
+      <h3>Moyens de paiement</h3>
+      <div class="payment-list">
+        <div *ngFor="let pm of paymentMethods" class="payment-item">
+          <span>{{ pm.type === 'carte' ? '💳' : '💰' }} {{ pm.nom || pm.type }}</span>
+          <span *ngIf="pm.numero">{{ pm.numero }}</span>
+          <span *ngIf="pm.est_par_defaut" class="badge badge-success">Par défaut</span>
+          <button class="ghost danger" (click)="deletePaymentMethod(pm.id)">Supprimer</button>
         </div>
-        <div class="stat-trend">
-          <i class="icon-trending-up"></i>
-          <span>+12%</span>
+      </div>
+      <button class="ghost" (click)="showPaymentForm = !showPaymentForm">+ Ajouter un moyen de paiement</button>
+    </div>
+  </section>
+
+  <!-- Commande en cours -->
+  <section *ngIf="activeTab === 'commande_en_cours' && activeOrder" class="panel">
+    <h2>Suivi de commande #{{ activeOrder.id | slice:0:8 }}</h2>
+
+    <div class="order-tracking">
+      <div class="tracking-steps">
+        <div [class.active]="activeOrder.statut === 'en_attente'" [class.completed]="['en_preparation', 'pret_pour_livraison', 'en_livraison', 'livree'].includes(activeOrder.statut)">
+          <span class="step-icon">📦</span>
+          <span>En préparation</span>
+        </div>
+        <div [class.active]="activeOrder.statut === 'pret_pour_livraison'" [class.completed]="['en_livraison', 'livree'].includes(activeOrder.statut)">
+          <span class="step-icon">🚚</span>
+          <span>En route</span>
+        </div>
+        <div [class.active]="activeOrder.statut === 'en_livraison'" [class.completed]="activeOrder.statut === 'livree'">
+          <span class="step-icon">📍</span>
+          <span>À proximité</span>
+        </div>
+        <div [class.completed]="activeOrder.statut === 'livree'">
+          <span class="step-icon">✅</span>
+          <span>Livrée</span>
         </div>
       </div>
 
-      <div class="stat-card stat-warning">
-        <div class="stat-icon">
-          <i class="icon-clock"></i>
+      <div class="order-details-grid">
+        <div class="card">
+          <h3>Détails du restaurant</h3>
+          <p><strong>{{ activeOrder.fournisseur }}</strong></p>
+          <p>Temps de préparation: ~20 min</p>
         </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ stats.commandes_en_cours }}</div>
-          <div class="stat-label">En cours</div>
+
+        <div class="card">
+          <h3>Détails du livreur</h3>
+          <p *ngIf="activeOrder.livreur_nom"><strong>{{ activeOrder.livreur_nom }}</strong></p>
+          <p *ngIf="!activeOrder.livreur_nom">En attente d'assignation</p>
+          <button class="ghost">Contacter</button>
         </div>
-        <div class="stat-trend">
-          <i class="icon-activity"></i>
-          <span>Actif</span>
+
+        <div class="card">
+          <h3>Détails de la commande</h3>
+          <div *ngFor="let item of activeOrder.produits || []" class="order-item">
+            <span>{{ item.nom }} × {{ item.quantite }}</span>
+            <span>{{ formatCurrency(item.prix_unitaire * item.quantite) }}</span>
+          </div>
+          <div class="order-total">
+            <p>Sous-total: {{ formatCurrency((activeOrder.montant_total || 0) - (activeOrder.frais_service || 0) - (activeOrder.frais_livraison || 0)) }}</p>
+            <p>Frais service: {{ formatCurrency(activeOrder.frais_service || 0) }}</p>
+            <p>Frais livraison: {{ formatCurrency(activeOrder.frais_livraison || 0) }}</p>
+            <p><strong>Total: {{ formatCurrency(activeOrder.montant_total) }}</strong></p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Localisation</h3>
+          <div class="map-placeholder">
+            <p>📍 Carte de localisation</p>
+            <p *ngIf="driverLocation">Livreur: {{ driverLocation.lat | number:'1.4-4' }}, {{ driverLocation.lng | number:'1.4-4' }}</p>
+            <p>ETA: {{ etaMinutes }} minutes</p>
+          </div>
         </div>
       </div>
 
-      <div class="stat-card stat-success">
-        <div class="stat-icon">
-          <i class="icon-check-circle"></i>
+      <button class="btn danger" (click)="contactSupport()">Contacter le support</button>
+    </div>
+  </section>
+
+  <section *ngIf="activeTab === 'commande_en_cours' && !activeOrder" class="panel">
+    <p>Aucune commande en cours</p>
+    <button (click)="switchTab('recommandations')">Voir les restaurants</button>
+  </section>
+
+  <!-- Historique -->
+  <section *ngIf="activeTab === 'historique'" class="panel">
+    <div class="panel-header">
+      <h2>Historique des commandes</h2>
+      <div class="filters">
+        <button [class.active]="orderFilter === 'toutes'" (click)="orderFilter = 'toutes'; loadOrders()">Toutes</button>
+        <button [class.active]="orderFilter === 'livrees'" (click)="orderFilter = 'livrees'; loadOrders()">Livrées</button>
+        <button [class.active]="orderFilter === 'annulees'" (click)="orderFilter = 'annulees'; loadOrders()">Annulées</button>
+        <input type="date" [(ngModel)]="dateFilter" placeholder="Filtrer par date" />
+      </div>
+    </div>
+
+    <div *ngIf="ordersLoading" class="loading">Chargement...</div>
+    <div *ngIf="!ordersLoading && orders.length === 0" class="empty-state">
+      <p>Aucune commande trouvée</p>
+    </div>
+
+    <div class="orders-list">
+      <div *ngFor="let order of orders" class="order-card">
+        <div class="order-header">
+          <div>
+            <strong>Commande #{{ order.id | slice:0:8 }}</strong>
+            <p>{{ order.fournisseur }}</p>
+            <p>{{ order.date_commande | date:'short' }}</p>
+          </div>
+          <div>
+            <span [class]="getStatusBadge(order.statut)">{{ getStatusLabel(order.statut) }}</span>
+            <p class="order-total">{{ formatCurrency(order.montant_total) }}</p>
+          </div>
         </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ stats.commandes_livrees }}</div>
-          <div class="stat-label">Livrées</div>
-        </div>
-        <div class="stat-trend">
-          <i class="icon-trending-up"></i>
-          <span>+8%</span>
+        <div class="order-actions">
+          <button class="ghost" (click)="reorder(order)">Commander à nouveau</button>
+          <button class="ghost" (click)="downloadInvoice(order)">Télécharger facture</button>
         </div>
       </div>
+    </div>
+  </section>
 
-      <div class="stat-card stat-info">
-        <div class="stat-icon">
-          <i class="icon-dollar-sign"></i>
-        </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ stats.montant_total_depense }} DH</div>
-          <div class="stat-label">Total dépensé</div>
-        </div>
-        <div class="stat-trend">
-          <i class="icon-trending-up"></i>
-          <span>+15%</span>
+  <!-- Recommandations -->
+  <section *ngIf="activeTab === 'recommandations'" class="panel">
+    <h2>Recommandations personnalisées</h2>
+
+    <!-- Promotions -->
+    <div class="card">
+      <h3>Promotions du jour</h3>
+      <div class="promotions-grid">
+        <div *ngFor="let promo of promotions" class="promo-card">
+          <h4>{{ promo.titre }}</h4>
+          <p>{{ promo.description }}</p>
+          <button (click)="applyPromo(promo.code)">Utiliser {{ promo.code }}</button>
         </div>
       </div>
     </div>
 
-    <!-- Main Content Grid -->
-    <div class="content-grid">
-      <!-- Recent Orders -->
-      <div class="content-section">
-        <div class="card">
-          <div class="card-header">
-            <h3 class="card-title">Commandes récentes</h3>
-            <a routerLink="/client/commandes" class="view-all-link">
-              Voir tout <i class="icon-arrow-right"></i>
-            </a>
-          </div>
-          
-          <div class="card-body">
-            <div *ngIf="recentCommandes.length === 0" class="empty-state">
-              <i class="icon-inbox"></i>
-              <p>Aucune commande récente</p>
-              <button class="btn btn-primary">Passer une commande</button>
+    <!-- Themes -->
+    <div class="card">
+      <h3>Thèmes</h3>
+      <div class="themes-list">
+        <button *ngFor="let theme of themes" class="theme-btn">{{ theme }}</button>
+      </div>
+    </div>
+
+    <!-- Recommended Suppliers -->
+    <div class="card">
+      <h3>Restaurants proches</h3>
+      <div class="suppliers-grid">
+        <div *ngFor="let supplier of recommendedSuppliers" class="supplier-card">
+          <img [src]="resolveImage(supplier.photo_couverture)" alt="{{ supplier.nom_entreprise }}" />
+          <div class="supplier-info">
+            <h4>{{ supplier.nom_entreprise }}</h4>
+            <p>{{ supplier.type_fournisseur }}</p>
+            <div class="supplier-meta">
+              <span>⭐ {{ supplier.note_moyenne || 'N/A' }}</span>
+              <span>⏱️ {{ supplier.temps_preparation_moyen || 'N/A' }} min</span>
+              <span>💰 {{ formatCurrency(supplier.frais_livraison || 0) }}</span>
             </div>
-
-            <div class="orders-list" *ngIf="recentCommandes.length > 0">
-              <div 
-                *ngFor="let commande of recentCommandes" 
-                class="order-item"
-              >
-                <div class="order-header">
-                  <div class="order-id">
-                    <i class="icon-hash"></i>
-                    {{ commande.numero_suivi }}
-                  </div>
-                  <span [class]="getStatusBadgeClass(commande.statut)">
-                    {{ getStatusLabel(commande.statut) }}
-                  </span>
-                </div>
-
-                <div class="order-details">
-                  <div class="order-info">
-                    <div class="info-row">
-                      <i class="icon-store"></i>
-                      <span>{{ commande.fournisseur_nom }}</span>
-                    </div>
-                    <div class="info-row">
-                      <i class="icon-calendar"></i>
-                      <span>{{ commande.date_commande | date:'short' }}</span>
-                    </div>
-                    <div class="info-row">
-                      <i class="icon-map-pin"></i>
-                      <span>{{ commande.rue }}, {{ commande.ville }}</span>
-                    </div>
-                  </div>
-
-                  <div class="order-amount">
-                    {{ commande.montant_total }} DH
-                  </div>
-                </div>
-
-                <div class="order-actions">
-                  <button 
-                    class="btn btn-sm btn-outline"
-                    (click)="trackCommande(commande.id)"
-                  >
-                    <i class="icon-navigation"></i>
-                    Suivre
-                  </button>
-                  <button class="btn btn-sm btn-outline">
-                    <i class="icon-message-circle"></i>
-                    Contacter
-                  </button>
-                </div>
-
-                <!-- Progress Bar for Active Orders -->
-                <div 
-                  *ngIf="commande.statut !== 'livree' && commande.statut !== 'annulee'" 
-                  class="order-progress"
-                >
-                  <div class="progress-bar">
-                    <div 
-                      class="progress-fill"
-                    ></div>
-                  </div>
-                  <div class="progress-steps">
-                    <div class="step" [class.active]="true">Confirmée</div>
-                    <div class="step" [class.active]="commande.statut !== 'en_attente'">
-                      Préparation
-                    </div>
-                    <div class="step" [class.active]="commande.statut === 'en_livraison' || commande.statut === 'livree'">
-                      En route
-                    </div>
-                    <div class="step" [class.active]="commande.statut === 'livree'">
-                      Livrée
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <button>Voir menu</button>
           </div>
         </div>
       </div>
+    </div>
+  </section>
 
-      <!-- Favorite Restaurants -->
-      <div class="sidebar-section">
-        <div class="card">
-          <div class="card-header">
-            <h3 class="card-title">Mes favoris</h3>
-          </div>
-          
-          <div class="card-body">
-            <div *ngIf="fournisseursFavoris.length === 0" class="empty-state small">
-              <i class="icon-heart"></i>
-              <p>Aucun favori</p>
-            </div>
+  <!-- Préférences -->
+  <section *ngIf="activeTab === 'preferences'" class="panel">
+    <h2>Gestion des préférences</h2>
 
-            <div class="favorites-list">
-              <div 
-                *ngFor="let favori of fournisseursFavoris" 
-                class="favorite-item"
-              >
-                <img 
-                  [src]="favori.photo_couverture" 
-                  [alt]="favori.nom_entreprise"
-                  class="favorite-image"
-                >
-                <div class="favorite-info">
-                  <h4>{{ favori.nom_entreprise }}</h4>
-                  <div class="favorite-rating">
-                    <i class="icon-star-filled"></i>
-                    <span>{{ favori.note_moyenne }}</span>
-                    <span class="rating-count">({{ favori.nombre_avis }})</span>
-                  </div>
-                  <div class="favorite-meta">
-                    <span>{{ favori.temps_preparation_moyen }} min</span>
-                    <span>•</span>
-                    <span>{{ favori.frais_livraison }} DH</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="card">
-          <div class="card-header">
-            <h3 class="card-title">Actions rapides</h3>
-          </div>
-          
-          <div class="card-body">
-            <div class="quick-actions">
-              <button class="quick-action-btn">
-                <i class="icon-repeat"></i>
-                <span>Recommander</span>
-              </button>
-              <button class="quick-action-btn">
-                <i class="icon-map"></i>
-                <span>Mes adresses</span>
-              </button>
-              <button class="quick-action-btn">
-                <i class="icon-credit-card"></i>
-                <span>Paiements</span>
-              </button>
-              <button class="quick-action-btn">
-                <i class="icon-gift"></i>
-                <span>Promotions</span>
-              </button>
-            </div>
-          </div>
+    <form [formGroup]="preferencesForm" (ngSubmit)="savePreferences()">
+      <div class="card">
+        <h3>Allergènes / Restrictions</h3>
+        <div class="chips">
+          <span *ngFor="let allergen of allergens" 
+                [class.selected]="selectedAllergens.includes(allergen)"
+                class="chip" 
+                (click)="toggleAllergen(allergen)">
+            {{ allergen }}
+          </span>
         </div>
       </div>
+
+      <div class="card">
+        <h3>Préférences culinaires</h3>
+        <div class="chips">
+          <span *ngFor="let pref of dietaryPreferences"
+                [class.selected]="selectedDietary.includes(pref)"
+                class="chip"
+                (click)="toggleDietary(pref)">
+            {{ pref }}
+          </span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Horaires de livraison préférés</h3>
+        <label>
+          <input formControlName="horaires_preferes" placeholder="Ex: 12:00-14:00, 19:00-21:00" />
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>Notifications</h3>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="notifications_email" />
+          Email
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="notifications_sms" />
+          SMS
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="notifications_push" />
+          Push
+        </label>
+      </div>
+
+      <button type="submit">Sauvegarder</button>
+    </form>
+  </section>
+
+  <!-- Portefeuille -->
+  <section *ngIf="activeTab === 'portefeuille'" class="panel">
+    <h2>Portefeuille & Paiements</h2>
+
+    <div class="card">
+      <h3>Solde du portefeuille</h3>
+      <h1 class="wallet-balance">{{ formatCurrency(walletBalance) }}</h1>
+      <button>Recharger</button>
+    </div>
+
+    <div class="card">
+      <h3>Codes promo</h3>
+      <div class="promo-input">
+        <input [(ngModel)]="promoCode" placeholder="Entrer un code promo" />
+        <button (click)="applyPromoCode()">Appliquer</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Historique des paiements</h3>
+      <div class="payment-history">
+        <div *ngFor="let payment of paymentHistory" class="payment-item">
+          <div>
+            <strong>{{ payment.description }}</strong>
+            <p>{{ payment.date | date:'short' }}</p>
+          </div>
+          <span [class]="payment.montant > 0 ? 'positive' : 'negative'">
+            {{ payment.montant > 0 ? '+' : '' }}{{ formatCurrency(payment.montant) }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Support -->
+  <section *ngIf="activeTab === 'support'" class="panel">
+    <h2>Support & Aide</h2>
+
+    <div class="support-grid">
+      <div class="card">
+        <h3>Créer un ticket</h3>
+        <form [formGroup]="supportForm" (ngSubmit)="submitTicket()">
+          <label>
+            Sujet*
+            <input formControlName="sujet" />
+          </label>
+          <label>
+            Message*
+            <textarea formControlName="message" rows="5"></textarea>
+          </label>
+          <button type="submit">Envoyer</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Chat en direct</h3>
+        <div class="chat-box">
+          <div *ngFor="let msg of chatMessages" [class.me]="msg.from === 'client'">
+            <small>{{ msg.from === 'client' ? 'Vous' : 'Support' }} - {{ msg.at | date:'short' }}</small>
+            <p>{{ msg.message }}</p>
+          </div>
+        </div>
+        <div class="chat-input">
+          <input [(ngModel)]="chatDraft" placeholder="Tapez votre message..." />
+          <button (click)="sendChatMessage()">Envoyer</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Mes tickets</h3>
+      <div class="tickets-list">
+        <div *ngFor="let ticket of tickets" class="ticket-item">
+          <div>
+            <strong>{{ ticket.sujet }}</strong>
+            <p>{{ ticket.message }}</p>
+            <small>{{ ticket.date_creation | date:'short' }}</small>
+          </div>
+          <span [class]="'badge badge-' + (ticket.statut === 'resolu' ? 'success' : ticket.statut === 'en_cours' ? 'info' : 'warning')">
+            {{ ticket.statut }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Fidélité -->
+  <section *ngIf="activeTab === 'fidelite'" class="panel">
+    <h2>Programme de fidélité</h2>
+
+    <div class="card">
+      <h3>Niveau actuel: {{ loyalty.level }}</h3>
+      <div class="loyalty-progress">
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width.%]="loyalty.progress"></div>
+        </div>
+        <p>{{ loyalty.points }} / {{ loyalty.pointsNeeded }} points pour {{ loyalty.nextLevel }}</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Récompenses disponibles</h3>
+      <div class="rewards-grid">
+        <div *ngFor="let reward of rewards" class="reward-card">
+          <h4>{{ reward.nom }}</h4>
+          <p>{{ reward.points }} points</p>
+          <button [disabled]="loyalty.points < reward.points" (click)="redeemReward(reward)">
+            Échanger
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Historique des points</h3>
+      <div class="points-history">
+        <div *ngFor="let entry of pointsHistory" class="points-item">
+          <div>
+            <strong>{{ entry.description }}</strong>
+            <p>{{ entry.date | date:'short' }}</p>
+          </div>
+          <span class="positive">+{{ entry.points }} points</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Notifications -->
+  <section *ngIf="activeTab === 'notifications'" class="panel">
+    <h2>Notifications & Messages</h2>
+    <div class="notifications-list">
+      <div *ngFor="let notif of notifications" class="notification-item" [class.unread]="!notif.lu">
+        <div>
+          <strong>{{ notif.titre }}</strong>
+          <p>{{ notif.message }}</p>
+          <small>{{ notif.date_creation | date:'short' }}</small>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Paramètres -->
+  <section *ngIf="activeTab === 'parametres'" class="panel">
+    <h2>Paramètres du compte</h2>
+
+    <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()">
+      <div class="card">
+        <h3>Informations personnelles</h3>
+        <label>
+          Nom complet*
+          <input formControlName="nom_complet" />
+        </label>
+        <label>
+          Téléphone
+          <input formControlName="telephone" />
+        </label>
+        <label>
+          Email*
+          <input type="email" formControlName="email" [disabled]="true" />
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>Sécurité</h3>
+        <label>
+          Nouveau mot de passe
+          <input type="password" formControlName="mot_de_passe" />
+        </label>
+        <label>
+          Confirmer mot de passe
+          <input type="password" formControlName="mot_de_passe_confirme" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" [(ngModel)]="twoFactorEnabled" (change)="toggle2FA()" />
+          Authentification à deux facteurs (2FA)
+        </label>
+      </div>
+
+      <button type="submit">Sauvegarder</button>
+    </form>
+  </section>
+
+  <!-- Address Form Modal -->
+  <div *ngIf="showAddressForm" class="modal">
+    <div class="modal-content">
+      <h3>Ajouter une adresse</h3>
+      <form [formGroup]="addressForm" (ngSubmit)="addAddress()">
+        <label>
+          Libellé
+          <input formControlName="libelle" placeholder="Ex: Maison, Bureau" />
+        </label>
+        <label>
+          Rue*
+          <input formControlName="rue" />
+        </label>
+        <label>
+          Ville*
+          <input formControlName="ville" />
+        </label>
+        <label>
+          Code postal*
+          <input formControlName="code_postal" />
+        </label>
+        <label>
+          Complément
+          <input formControlName="complement" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="est_principale" />
+          Adresse principale
+        </label>
+        <div class="modal-actions">
+          <button type="submit">Ajouter</button>
+          <button type="button" class="ghost" (click)="showAddressForm = false">Annuler</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Payment Form Modal -->
+  <div *ngIf="showPaymentForm" class="modal">
+    <div class="modal-content">
+      <h3>Ajouter un moyen de paiement</h3>
+      <form [formGroup]="paymentForm" (ngSubmit)="addPaymentMethod()">
+        <label>
+          Type*
+          <select formControlName="type">
+            <option value="carte">Carte bancaire</option>
+            <option value="portefeuille">Portefeuille</option>
+          </select>
+        </label>
+        <label *ngIf="paymentForm.get('type')?.value === 'carte'">
+          Numéro de carte
+          <input formControlName="numero" />
+        </label>
+        <label *ngIf="paymentForm.get('type')?.value === 'carte'">
+          Nom sur la carte
+          <input formControlName="nom" />
+        </label>
+        <label *ngIf="paymentForm.get('type')?.value === 'carte'">
+          Date d'expiration
+          <input formControlName="expiration" placeholder="MM/AA" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="est_par_defaut" />
+          Méthode par défaut
+        </label>
+        <div class="modal-actions">
+          <button type="submit">Ajouter</button>
+          <button type="button" class="ghost" (click)="showPaymentForm = false">Annuler</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
+

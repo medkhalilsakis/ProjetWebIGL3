@@ -1,11 +1,12 @@
-import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Router } from '@angular/router';
-import { AuthService } from '../services/authentification';
-import { ToastService } from '../services/toast';
-import { Subscription, interval } from 'rxjs';
 import { CommonModule } from '@angular/common';
-import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { Component, OnDestroy, OnInit, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
+import { interval, Subscription, of } from 'rxjs';
+import { catchError, map, switchMap, tap } from 'rxjs/operators';
+import { AuthService, User } from '../services/authentification';
+import { ToastService } from '../services/toast';
+import { NotificationService, Notification } from '../services/notification';
 
 interface DashboardStats {
   ordersToday: number;
@@ -19,50 +20,116 @@ interface DashboardStats {
   totalOrders: number;
 }
 
-interface Product {
+interface SupplierStatsSummary {
+  totalOrders?: number;
+  totalRevenue?: number;
+  totalProducts?: number;
+  ordersToday?: number;
+  revenueToday?: number;
+}
+
+interface Commande {
   id: string;
+  statut: 'en_attente' | 'en_preparation' | 'pret_pour_livraison' | 'en_livraison' | 'livree' | 'annulee' | string;
+  date_commande?: string;
+  montant_total?: number;
+  frais_service?: number;
+  frais_livraison?: number;
+  mode_paiement?: string;
+  instructions_speciales?: string;
+  client_nom?: string;
+  fournisseur_nom?: string;
+  livreur_nom?: string;
+  rue?: string;
+  ville?: string;
+  produits?: any[];
+}
+
+interface Product {
+  id?: string;
   nom: string;
-  description: string;
+  description?: string;
   prix: number;
   quantite: number;
-  status: 'active' | 'inactive' | 'out_of_stock';
-  categorie: string;
-  image?: string;
+  categorie_id: string;
+  image: string;
+  status?: 'active' | 'out_of_stock';
   promotionPercent?: number;
+  options?: string[];
+  variantes?: string[];
+  images_additionnelles?: string[];
+  _showImages?: boolean; // UI-only flag for gallery toggle
 }
 
-interface Order {
+interface Promotion {
   id: string;
-  numero_suivi: string;
-  status: 'pending' | 'preparing' | 'ready' | 'picked_up' | 'delivered' | string;
-  montant_total: number;
-  client_nom: string;
-  products: any[];
-  instructions?: string;
-  createdAt: Date;
-  estimatedPickup?: Date;
+  code: string;
+  description: string;
+  reduction: number;
+  type: 'coupon' | 'happy_hour' | 'special';
+  active: boolean;
+  periode?: { debut: string; fin: string };
+  produitId?: string | null;
 }
 
-interface Alert {
+interface Review {
   id: string;
-  type: 'stock' | 'order' | 'dispute' | 'system';
-  message: string;
-  severity: 'warning' | 'critical' | 'info';
-  timestamp: Date;
+  rating: number;
+  comment: string;
+  author: string;
+  date: string;
 }
 
 @Component({
   selector: 'app-fournisseur-dashboard',
+  standalone: true,
+  imports: [CommonModule, FormsModule, ReactiveFormsModule],
   templateUrl: './fournisseur-dashboard.html',
   styleUrls: ['./fournisseur-dashboard.css'],
-  imports: [CommonModule, FormsModule, ReactiveFormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class FournisseurDashboard implements OnInit, OnDestroy {
-  // Tab Management
-  activeTab: 'overview' | 'products' | 'orders' | 'statistics' | 'finance' | 'schedule' | 'messages' | 'settings' = 'overview';
+  private apiUrl = 'http://localhost:3000/api';
 
-  // Data
+  currentUser: User | null = null;
+
+  activeTab:
+    | 'commandes'
+    | 'produits'
+    | 'promotions'
+    | 'statistiques'
+    | 'profil'
+    | 'support'
+    | 'avis'
+    | 'avances' = 'commandes';
+
+  // Commandes
+  commandes: Commande[] = [];
+  commandesFiltrees: Commande[] = [];
+  commandeSelectionnee: Commande | null = null;
+  filtreStatut: 'toutes' | 'en_cours' | 'livrees' | 'annulees' = 'en_cours';
+  commandesLoading = false;
+
+  // Produits
+  produits: Product[] = [];
+  produitsPagines: Product[] = [];
+  currentPage = 1;
+  itemsPerPage = 10;
+  visibleItems = 3;
+  categories: { id: string; name: string }[] = [];
+  produitForm!: FormGroup;
+  varianteInput = '';
+  optionInput = '';
+  imagePrincipaleFile: File | null = null;
+  imagesAdditionnelles: File[] = [];
+  produitEdition: Product | null = null;
+  produitsLoading = false;
+
+  // Promotions (local state — backend non spécifié)
+  promotions: Promotion[] = [];
+  promotionForm!: FormGroup;
+
+  // Stats
   stats: DashboardStats = {
     ordersToday: 0,
     ordersWeek: 0,
@@ -74,780 +141,673 @@ export class FournisseurDashboard implements OnInit, OnDestroy {
     avgPrepTime: 0,
     totalOrders: 0
   };
-
-  products: Product[] = [];
-  orders: Order[] = [];
-  alerts: Alert[] = [];
-  currentUser: any = null;
-
-  // UI State
-  loading = true;
-  showProductForm = false;
-  showOrderDetails = false;
-  selectedOrder: Order | null = null;
-  selectedProduct: Product | null = null;
-
-  // Error states
-  loadingErrors = {
-    stats: false,
-    products: false,
-    orders: false,
-    alerts: false,
-    finance: false,
-    topProducts: false
+  statsSummary: SupplierStatsSummary = {};
+  statsLoading = false;
+  charts = {
+    revenue: [] as { label: string; value: number }[],
+    orders: [] as { label: string; value: number }[]
   };
 
-  // Form Data
-  newProduct: Partial<Product> = {
-    status: 'inactive',
-    categorie: 'food'
+  // Profil établissement
+  businessInfo = {
+    nom: '',
+    adresse: '',
+    horaires: '',
+    informationsBancaires: '',
+    disponibilite: 'ouvert'
   };
+  profileFile: File | null = null;
+  profileUploading = false;
 
-  // Finance
-  availableBalance = 0;
-  totalCommission = 0;
-  paymentHistory: any[] = [];
-  revenueByDate: any[] = [];
+  // Support & communication
+  supportMessage = '';
+  chatMessages: { from: 'client' | 'fournisseur'; message: string; at: Date }[] = [];
+  chatDraft = '';
 
-  // Schedule
-  openingTime = '10:00';
-  closingTime = '22:00';
-  isOpen = true;
-  holidays: string[] = [];
+  // Avis
+  avis: Review[] = [];
+  avisLoading = false;
 
-  // Reviews & Ratings
-  reviews: any[] = [];
-  averageRating = 0;
-  totalReviews = 0;
+  // Notifications
+  notifications: Notification[] = [];
+  unreadNotifications = 0;
 
-  // Charts Data
-  salesByPeriod = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    data: [0, 0, 0, 0, 0, 0, 0]
-  };
-  topProducts: any[] = [];
-  orderTrends: any[] = [];
-  ordersByStatus: any[] = [];
-
-  // Cached random values (to avoid template recalcs)
-  cachedRandomValues = new Map<string, number>();
-  public Math = Math; // to use Math in template
-  private updateSubscription: Subscription | null = null;
-  private apiUrl = 'http://localhost:3000/api';
-  // API error tracking
-  apiErrorMessages: { [key: string]: string } = {};
+  // Misc
+  private refreshSub?: Subscription;
 
   constructor(
     private http: HttpClient,
-    private authService: AuthService,
-    private toastService: ToastService,
-    private router: Router,
+    private fb: FormBuilder,
+    private auth: AuthService,
+    private toast: ToastService,
+    private notifService: NotificationService,
     private cdr: ChangeDetectorRef
   ) {
-    this.currentUser = this.authService?.currentUserValue ?? null;
-    this.initializeCachedValues();
-  }
-
-  // Helper to always include auth headers in requests (fallback if interceptor not applied)
-  private getAuthOptions() {
-    return this.authService?.getAuthHeaders() || {};
-  }
-
-  private initializeCachedValues(): void {
-    this.cachedRandomValues.set('trend_hour', Math.floor(Math.random() * 5));
-    this.cachedRandomValues.set('trend_percent', Math.floor(Math.random() * 20));
-  }
-
-  getCachedRandom(key: string): number {
-    if (!this.cachedRandomValues.has(key)) {
-      this.cachedRandomValues.set(key, Math.floor(Math.random() * 20));
-    }
-    return this.cachedRandomValues.get(key) ?? 0;
+    this.currentUser = this.auth.currentUserValue;
+    this.auth.currentUser.subscribe((u) => {
+      this.currentUser = u;
+      this.cdr.markForCheck();
+    });
   }
 
   ngOnInit(): void {
-    this.loadDashboardData();
-    this.initializeRealtimeUpdates();
+    this.initForms();
+    this.loadAll();
+    this.observeNotifications();
+
+    // refresh commandes / stats toutes les 45s
+    this.refreshSub = interval(45000).subscribe(() => {
+      this.loadCommandes(this.filtreStatut);
+      this.loadStats();
+    });
   }
 
   ngOnDestroy(): void {
-    if (this.updateSubscription) {
-      this.updateSubscription.unsubscribe();
-      this.updateSubscription = null;
-    }
+    this.refreshSub?.unsubscribe();
   }
 
-  // ---------- Loading / Initialization ----------
-  loadDashboardData(): void {
-    this.loading = true;
-    // reset error flags
-    Object.keys(this.loadingErrors).forEach(k => (this.loadingErrors[k as keyof typeof this.loadingErrors] = false));
-    // call loads (kept separate for clarity)
+  // ---------- Initialisation ----------
+  private initForms(): void {
+    this.produitForm = this.fb.group({
+      nom: ['', [Validators.required, Validators.minLength(2)]],
+      description: [''],
+      prix: [0, [Validators.required, Validators.min(0.1)]],
+      quantite: [0, [Validators.required, Validators.min(0)]],
+      categorie_id: ['', Validators.required],
+      promotionPercent: [0, [Validators.min(0), Validators.max(90)]],
+      disponible: [true],
+      options: [[]],
+      variantes: [[]]
+    });
+
+    this.promotionForm = this.fb.group({
+      code: ['', [Validators.required, Validators.minLength(3)]],
+      description: [''],
+      reduction: [10, [Validators.required, Validators.min(1), Validators.max(90)]],
+      type: ['coupon'],
+      produitId: [null],
+      debut: [''],
+      fin: ['']
+    });
+  }
+
+  public loadAll(): void {
+    this.loadCommandes(this.filtreStatut);
+    this.loadProduits();
+    this.loadCategories();
     this.loadStats();
-    this.loadProducts();
-    this.loadOrders();
-    this.loadAlerts();
-    this.loadFinanceData();
-    this.loadTopProducts();
-    // loading flag will be cleared by initializeRealtimeUpdates once initial extra loads are triggered
+    this.loadStatsSummary();
+    this.loadAvis();
   }
 
-  private loadStats(): void {
-    this.http.get<any>(`${this.apiUrl}/fournisseur/stats`, this.getAuthOptions()).subscribe({
-      next: (response) => {
-        try {
-          if (response?.success && response.data) {
-            const d = response.data;
-            this.stats = {
-              ordersToday: d.ordersToday ?? 0,
-              ordersWeek: d.ordersWeek ?? 0,
-              ordersMonth: d.ordersMonth ?? 0,
-              revenueToday: d.revenueToday ?? 0,
-              revenueWeek: d.revenueWeek ?? 0,
-              revenueMonth: d.revenueMonth ?? 0,
-              rating: d.rating ?? 0,
-              avgPrepTime: d.avgPrepTime ?? 0,
-              totalOrders: d.totalOrders ?? 0
-            };
-          } else {
-            // leave defaults
-          }
-          this.loadingErrors.stats = false;
-        } catch (err) {
-          console.error('Error parsing stats response:', err);
-          this.loadingErrors.stats = true;
-        }
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.handleApiError(err, 'stats');
-        this.loadingErrors.stats = true;
-        this.cdr.markForCheck();
-      }
+  // ---------- Notifications ----------
+  private observeNotifications(): void {
+    this.notifService.notifications$.subscribe((n) => {
+      this.notifications = n || [];
+      this.cdr.markForCheck();
     });
-  }
-
-  private loadProducts(): void {
-    this.http.get<any>(`${this.apiUrl}/fournisseur/produits`, this.getAuthOptions()).subscribe({
-      next: (response) => {
-        try {
-          if (response?.success && Array.isArray(response.data)) {
-            this.products = response.data.map((p: any) => ({
-              id: p.id,
-              nom: p.nom ?? 'Unknown Product',
-              description: p.description ?? '',
-              prix: p.prix ?? 0,
-              quantite: p.quantite ?? 0,
-              status: p.status ?? 'active',
-              categorie: p.categorie ?? 'food',
-              image: p.image,
-              promotionPercent: p.promotionPercent ?? 0
-            }));
-          } else {
-            this.products = [];
-          }
-          this.loadingErrors.products = false;
-        } catch (err) {
-          console.error('Error parsing products response:', err);
-          this.loadingErrors.products = true;
-          this.products = [];
-        }
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.handleApiError(err, 'products');
-        this.loadingErrors.products = true;
-        this.products = [];
-        this.cdr.markForCheck();
-      }
+    this.notifService.unreadCount$.subscribe((c) => {
+      this.unreadNotifications = c ?? 0;
+      this.cdr.markForCheck();
     });
+    this.notifService.loadNotifications();
   }
 
-  private loadOrders(): void {
-    this.http.get<any>(`${this.apiUrl}/fournisseur/commandes?limit=50`, this.getAuthOptions()).subscribe({
-      next: (response) => {
-        try {
-          if (response?.success && Array.isArray(response.data)) {
-            this.orders = response.data.map((o: any) => ({
-              id: o.id,
-              numero_suivi: o.numero_suivi ?? `ORD-${(o.id ?? '').toString().substring(0, 6).toUpperCase()}`,
-              status: o.statut ?? 'pending',
-              montant_total: o.montant_total ?? 0,
-              client_nom: o.client_nom ?? 'Unknown Client',
-              products: o.lignes_commande ?? [],
-              instructions: o.instructions_speciales ?? '',
-              createdAt: new Date(o.created_at ?? Date.now()),
-              estimatedPickup: o.estimated_pickup ? new Date(o.estimated_pickup) : undefined
-            }));
-          } else {
-            this.orders = [];
-          }
-          this.loadingErrors.orders = false;
-        } catch (err) {
-          console.error('Error parsing orders response:', err);
-          this.loadingErrors.orders = true;
-          this.orders = [];
-        }
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.handleApiError(err, 'orders');
-        this.loadingErrors.orders = true;
-        this.orders = [];
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  private loadAlerts(): void {
-    this.http.get<any>(`${this.apiUrl}/fournisseur/alertes`, this.getAuthOptions()).subscribe({
-      next: (response) => {
-        try {
-          this.alerts = response?.success && Array.isArray(response.data) ? response.data : [];
-          this.loadingErrors.alerts = false;
-        } catch (err) {
-          console.error('Error parsing alerts response:', err);
-          this.loadingErrors.alerts = true;
-          this.alerts = [];
-        }
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.handleApiError(err, 'alerts');
-        this.loadingErrors.alerts = true;
-        this.alerts = [];
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  private loadFinanceData(): void {
-    this.http.get<any>(`${this.apiUrl}/fournisseur/finance`, this.getAuthOptions()).subscribe({
-      next: (response) => {
-        try {
-          if (response?.success && response.data) {
-            const d = response.data;
-            this.availableBalance = d.availableBalance ?? 0;
-            this.totalCommission = d.totalCommission ?? 0;
-            this.paymentHistory = d.paymentHistory ?? [];
-          } else {
-            this.availableBalance = 0;
-            this.totalCommission = 0;
-            this.paymentHistory = [];
-          }
-          this.loadingErrors.finance = false;
-        } catch (err) {
-          console.error('Error parsing finance response:', err);
-          this.loadingErrors.finance = true;
-          this.availableBalance = 0;
-          this.totalCommission = 0;
-          this.paymentHistory = [];
-        }
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.handleApiError(err, 'finance');
-        this.loadingErrors.finance = true;
-        this.availableBalance = 0;
-        this.totalCommission = 0;
-        this.paymentHistory = [];
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  private loadTopProducts(): void {
-    this.http.get<any>(`${this.apiUrl}/fournisseur/produits/top`, this.getAuthOptions()).subscribe({
-      next: (response) => {
-        try {
-          this.topProducts = response?.success && Array.isArray(response.data) ? response.data : [];
-          this.loadingErrors.topProducts = false;
-        } catch (err) {
-          console.error('Error parsing top products response:', err);
-          this.loadingErrors.topProducts = true;
-          this.topProducts = [];
-        }
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.handleApiError(err, 'topProducts');
-        this.loadingErrors.topProducts = true;
-        this.topProducts = [];
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  private loadReviews(): void {
-    this.http.get<any>(`${this.apiUrl}/avis/fournisseur`, this.getAuthOptions()).subscribe({
-      next: (response) => {
-        try {
-          if (response?.success && Array.isArray(response.data)) {
-            this.reviews = response.data;
-            this.totalReviews = this.reviews.length;
-            if (this.totalReviews > 0) {
-              const totalRating = this.reviews.reduce((sum: number, r: any) => sum + (r.rating ?? 0), 0);
-              this.averageRating = totalRating / this.totalReviews;
-            } else {
-              this.averageRating = 0;
-            }
-          } else {
-            this.reviews = [];
-            this.totalReviews = 0;
-            this.averageRating = 0;
-          }
-        } catch (err) {
-          console.error('Error parsing reviews response:', err);
-          this.reviews = [];
-        }
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.handleApiError(err, 'reviews');
-        this.reviews = [];
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  private loadRevenueByDate(): void {
-    this.http.get<any>(`${this.apiUrl}/statistiques/revenue/dates?days=30`, this.getAuthOptions()).subscribe({
-      next: (response) => {
-        try {
-          this.revenueByDate = response?.success && Array.isArray(response.data) ? response.data : [];
-        } catch (err) {
-          console.error('Error parsing revenue data:', err);
-          this.revenueByDate = [];
-        }
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.handleApiError(err, 'revenueByDate');
-        this.revenueByDate = [];
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  private loadOrdersByStatus(): void {
-    this.http.get<any>(`${this.apiUrl}/statistiques/commandes/statut`, this.getAuthOptions()).subscribe({
-      next: (response) => {
-        try {
-          this.ordersByStatus = response?.success && Array.isArray(response.data) ? response.data : [];
-        } catch (err) {
-          console.error('Error parsing order status data:', err);
-          this.ordersByStatus = [];
-        }
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        this.handleApiError(err, 'ordersByStatus');
-        this.ordersByStatus = [];
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  initializeRealtimeUpdates(): void {
-    // additional periodic/one-time loads
-    this.loadReviews();
-    this.loadRevenueByDate();
-    this.loadOrdersByStatus();
-
-    // Refresh small set periodically
-    this.updateSubscription = interval(30000).subscribe(() => {
-      this.loadStats();
-      this.loadOrders();
-      this.loadReviews();
-    });
-
-    // initial loading finished
-    this.loading = false;
-    this.cdr.markForCheck();
-  }
-
-  // ---------- Tabs ----------
-  switchTab(tab: any): void {
+  // ---------- Commandes ----------
+  switchTab(tab: FournisseurDashboard['activeTab']): void {
     this.activeTab = tab;
-    this.showProductForm = false;
-    this.showOrderDetails = false;
+    if (tab === 'commandes') this.loadCommandes(this.filtreStatut);
+    if (tab === 'produits') this.loadProduits();
+    if (tab === 'statistiques') this.loadStats();
+    if (tab === 'avis') this.loadAvis();
     this.cdr.markForCheck();
   }
 
-  // ---------- Product management ----------
-  addProduct(): void {
-    this.showProductForm = true;
-    this.newProduct = { status: 'inactive', categorie: 'food' };
+  loadCommandes(filtre: 'toutes' | 'en_cours' | 'livrees' | 'annulees' = 'en_cours'): void {
+    this.commandesLoading = true;
+    this.filtreStatut = filtre;
+
+    let params = new HttpParams().set('limit', '100');
+    if (filtre === 'livrees') params = params.set('statut', 'livree');
+    if (filtre === 'annulees') params = params.set('statut', 'annulee');
+
+    this.http
+      .get<any>(`${this.apiUrl}/commandes`, { params, ...this.auth.getAuthHeaders() })
+      .pipe(
+        catchError((err) => {
+          console.error('Erreur chargement commandes', err);
+          this.toast.showToast('Impossible de récupérer les commandes', 'error');
+          this.commandes = [];
+          this.commandesFiltrees = [];
+          this.commandesLoading = false;
+          this.cdr.markForCheck();
+          return of({ success: false, commandes: [] });
+        })
+      )
+      .subscribe((res) => {
+        if (res?.success && Array.isArray(res.commandes)) {
+          this.commandes = res.commandes;
+          this.commandesFiltrees = this.filterCommandes(res.commandes, filtre);
+        } else {
+          this.commandes = [];
+          this.commandesFiltrees = [];
+        }
+        this.commandesLoading = false;
+        this.cdr.markForCheck();
+      });
   }
 
-  saveProduct(): void {
-    if (!this.newProduct.nom || this.newProduct.prix == null) {
-      this.toastService.showToast('Please fill in all required fields', 'warning');
+  private filterCommandes(list: Commande[], filtre: FournisseurDashboard['filtreStatut']): Commande[] {
+    if (filtre === 'toutes') return list;
+    if (filtre === 'livrees') return list.filter((c) => c.statut === 'livree');
+    if (filtre === 'annulees') return list.filter((c) => c.statut === 'annulee');
+    // en cours
+    return list.filter((c) => c.statut !== 'livree' && c.statut !== 'annulee');
+  }
+
+  ouvrirCommande(cmd: Commande): void {
+    this.commandeSelectionnee = cmd;
+  }
+
+  mettreAJourStatut(cmd: Commande, nouveauStatut: Commande['statut']): void {
+    if (!cmd?.id) return;
+    this.http
+      .put<any>(`${this.apiUrl}/commandes/${cmd.id}/statut`, { statut: nouveauStatut }, this.auth.getAuthHeaders())
+      .subscribe({
+        next: (res) => {
+          if (res?.success) {
+            cmd.statut = nouveauStatut;
+            this.toast.showToast('Statut mis à jour', 'success');
+            this.loadCommandes(this.filtreStatut);
+          }
+        },
+        error: (err) => {
+          console.error('maj statut', err);
+          this.toast.showToast('Impossible de mettre à jour le statut', 'error');
+        }
+      });
+  }
+
+  getStatutBadge(statut: Commande['statut']): string {
+    const map: Record<string, string> = {
+      en_attente: 'badge-warning',
+      en_preparation: 'badge-info',
+      pret_pour_livraison: 'badge-primary',
+      en_livraison: 'badge-primary',
+      livree: 'badge-success',
+      annulee: 'badge-danger'
+    };
+    return `badge ${map[statut] || 'badge-secondary'}`;
+  }
+
+  // ---------- Produits ----------
+  loadCategories(): void {
+    this.http
+      .get<any>(`${this.apiUrl}/categories`)
+      .pipe(
+        catchError((err) => {
+          console.error('Erreur chargement catégories', err);
+          this.categories = [];
+          return of({ success: false, data: [] });
+        })
+      )
+      .subscribe((res) => {
+        if (res?.success && Array.isArray(res.data)) {
+          this.categories = res.data;
+        }
+        this.cdr.markForCheck();
+      });
+  }
+
+  loadProduits(): void {
+    this.produitsLoading = true;
+    this.http
+      .get<any>(`${this.apiUrl}/fournisseur/produits`, this.auth.getAuthHeaders())
+      .pipe(
+        catchError((err) => {
+          console.error('Erreur chargement produits', err);
+          this.toast.showToast('Impossible de récupérer les produits', 'error');
+          this.produits = [];
+          this.produitsLoading = false;
+          this.cdr.markForCheck();
+          return of({ success: false, data: [] });
+        })
+      )
+      .subscribe((res) => {
+        this.produits = (res?.data || []).map((p: any) => ({
+          ...p,
+          image: this.toAbsoluteUrl(p.image),
+          images_additionnelles: (p.images_additionnelles || []).map((img: string) => this.toAbsoluteUrl(img)),
+          _showImages: false
+        }));
+        this.updatePaginatedProducts();
+        this.produitsLoading = false;
+        this.cdr.markForCheck();
+      });
+  }
+
+  onMainImageSelected(event: any): void {
+    const file = event?.target?.files?.[0];
+    if (file) this.imagePrincipaleFile = file;
+  }
+
+  onAdditionalImagesSelected(event: any): void {
+    const files = event?.target?.files;
+    if (files?.length) this.imagesAdditionnelles = Array.from(files);
+  }
+
+  ajouterVariante(): void {
+    const val = this.varianteInput.trim();
+    if (!val) return;
+    const current = this.produitForm.get('variantes')?.value || [];
+    this.produitForm.patchValue({ variantes: [...current, val] });
+    this.varianteInput = '';
+  }
+
+  ajouterOption(): void {
+    const val = this.optionInput.trim();
+    if (!val) return;
+    const current = this.produitForm.get('options')?.value || [];
+    this.produitForm.patchValue({ options: [...current, val] });
+    this.optionInput = '';
+  }
+
+  private uploadImages() {
+    if (!this.imagePrincipaleFile) return of(null);
+    const fd = new FormData();
+    fd.append('image_principale', this.imagePrincipaleFile);
+    this.imagesAdditionnelles.slice(0, 5).forEach((file) => fd.append('images_additionnelles', file));
+
+    const opts = this.auth.getAuthHeaders();
+    // Avoid forcing Content-Type when sending FormData
+    const headers = (opts?.headers as HttpHeaders | undefined)?.delete('Content-Type');
+
+    return this.http.post<any>(`${this.apiUrl}/fournisseur/upload-images`, fd, { headers }).pipe(
+      map((res) => (res?.success ? res.data : null)),
+      catchError((err) => {
+        console.error('upload images', err);
+        this.toast.showToast('Échec de l\'upload des images', 'error');
+        return of(null);
+      })
+    );
+  }
+
+  enregistrerProduit(): void {
+    if (this.produitForm.invalid) {
+      this.toast.showToast('Veuillez compléter le formulaire produit', 'warning');
       return;
     }
 
+    const formValue = this.produitForm.value;
+    const create$ = this.uploadImages().pipe(
+      switchMap((images) => {
+        if (!images?.mainImage) {
+          this.toast.showToast('Image principale obligatoire', 'error');
+          return of(null);
+        }
+        const payload: any = {
+          nom: formValue.nom,
+          description: formValue.description || '',
+          prix: formValue.prix,
+          quantite: formValue.quantite,
+          categorie_id: formValue.categorie_id,
+          image: images.mainImage
+        };
+        return this.http.post<any>(`${this.apiUrl}/fournisseur/produits`, payload, this.auth.getAuthHeaders());
+      })
+    );
+
+    create$.subscribe({
+      next: (res) => {
+        if (res?.success) {
+          this.toast.showToast('Produit ajouté', 'success');
+          this.resetProduitForm();
+          this.loadProduits();
+        }
+      },
+      error: (err) => {
+        console.error('add product', err);
+        this.toast.showToast('Impossible d\'ajouter le produit', 'error');
+      }
+    });
+  }
+
+  modifierProduit(produit: Product): void {
+    this.produitEdition = produit;
+    this.produitForm.patchValue({
+      nom: produit.nom,
+      description: produit.description || '',
+      prix: produit.prix,
+      quantite: produit.quantite,
+      categorie_id: produit.categorie_id,
+      promotionPercent: produit.promotionPercent || 0,
+      disponible: produit.status !== 'out_of_stock'
+    });
+    this.activeTab = 'produits';
+    this.cdr.markForCheck();
+  }
+
+  enregistrerEdition(): void {
+    if (!this.produitEdition || this.produitForm.invalid) return;
+    const val = this.produitForm.value;
+    const payload: any = {
+      nom: val.nom,
+      description: val.description,
+      prix: val.prix,
+      quantite: val.quantite,
+      status: val.disponible ? 'active' : 'out_of_stock',
+      categorie_id: val.categorie_id,
+      promotionPercent: val.promotionPercent
+    };
+
+    this.http
+      .put<any>(`${this.apiUrl}/fournisseur/produits/${this.produitEdition.id}`, payload, this.auth.getAuthHeaders())
+      .subscribe({
+        next: (res) => {
+          if (res?.success) {
+            this.toast.showToast('Produit mis à jour', 'success');
+            this.produitEdition = null;
+            this.resetProduitForm();
+            this.loadProduits();
+          }
+        },
+        error: (err) => {
+          console.error('maj produit', err);
+          this.toast.showToast('Impossible de mettre à jour le produit', 'error');
+        }
+      });
+  }
+
+  supprimerProduit(produit: Product): void {
+    if (!produit?.id) return;
+    if (!confirm(`Supprimer ${produit.nom} ?`)) return;
+    this.http.delete<any>(`${this.apiUrl}/fournisseur/produits/${produit.id}`, this.auth.getAuthHeaders()).subscribe({
+      next: (res) => {
+        if (res?.success) {
+          this.toast.showToast('Produit supprimé', 'success');
+          this.loadProduits();
+        }
+      },
+      error: (err) => {
+        console.error('delete produit', err);
+        this.toast.showToast('Suppression impossible', 'error');
+      }
+    });
+  }
+
+  basculerDisponibilite(produit: Product): void {
     const payload = {
-      nom: this.newProduct.nom,
-      description: this.newProduct.description,
-      prix: this.newProduct.prix,
-      quantite: this.newProduct.quantite ?? 0,
-      status: this.newProduct.status,
-      categorie: this.newProduct.categorie,
-      promotionPercent: this.newProduct.promotionPercent ?? 0
+      status: produit.status === 'out_of_stock' ? 'active' : 'out_of_stock'
     };
-
-    this.http.post<any>(`${this.apiUrl}/fournisseur/produits`, payload, this.getAuthOptions()).subscribe({
-      next: (res) => {
-        if (res?.success && res.data) {
-          this.products.push(res.data);
-          this.toastService.showToast('Product added successfully', 'success');
-          this.showProductForm = false;
-          this.newProduct = { status: 'inactive', categorie: 'food' };
-          this.cdr.markForCheck();
-        } else {
-          this.toastService.showToast('Product added but response incomplete', 'warning');
-        }
-      },
-      error: (err) => {
-        this.handleApiError(err, 'saveProduct');
-        this.toastService.showToast('Failed to add product', 'error');
-        this.cdr.markForCheck();
-      }
-    });
+    this.http
+      .put<any>(`${this.apiUrl}/fournisseur/produits/${produit.id}`, payload, this.auth.getAuthHeaders())
+      .subscribe({
+        next: (res) => {
+          if (res?.success) {
+            produit.status = payload.status as any;
+            this.toast.showToast('Disponibilité mise à jour', 'success');
+            this.cdr.markForCheck();
+          }
+        },
+        error: () => this.toast.showToast('Impossible de changer la disponibilité', 'error')
+      });
   }
 
-  editProduct(product: Product): void {
-    this.selectedProduct = product;
-    this.newProduct = { ...product };
-    this.showProductForm = true;
+  toggleImages(produit: Product): void {
+    produit._showImages = !produit._showImages;
     this.cdr.markForCheck();
   }
 
-  updateProduct(): void {
-    if (!this.selectedProduct) return;
-    if (!this.newProduct.nom || this.newProduct.prix == null) {
-      this.toastService.showToast('Please fill in all required fields', 'warning');
+  resolveImage(src: string | null | undefined): string | null {
+    if (!src) return null;
+    return this.toAbsoluteUrl(src);
+  }
+
+  private toAbsoluteUrl(path: string | null | undefined): string | null {
+    if (!path) return null;
+    if (path.startsWith('http')) return path;
+    // backend serves uploads at http://localhost:3000/uploads/...
+    const trimmed = path.startsWith('/') ? path.slice(1) : path;
+    return `http://localhost:3000/${trimmed}`;
+  }
+
+  resetProduitForm(): void {
+    this.produitForm.reset({
+      nom: '',
+      description: '',
+      prix: 0,
+      quantite: 0,
+      categorie_id: '',
+      promotionPercent: 0,
+      disponible: true
+    });
+    this.imagePrincipaleFile = null;
+    this.imagesAdditionnelles = [];
+    this.varianteInput = '';
+    this.optionInput = '';
+  }
+
+  // ---------- Promotions (local only) ----------
+  ajouterPromotion(): void {
+    if (this.promotionForm.invalid) {
+      this.toast.showToast('Complétez la promotion', 'warning');
       return;
     }
+    const val = this.promotionForm.value;
+    const promo: Promotion = {
+      id: this.randomId(),
+      code: val.code,
+      description: val.description || '',
+      reduction: val.reduction,
+      type: val.type,
+      produitId: val.produitId,
+      active: true,
+      periode: val.debut && val.fin ? { debut: val.debut, fin: val.fin } : undefined
+    };
+    this.promotions.unshift(promo);
+    this.toast.showToast('Promotion créée (front)', 'info');
+    this.promotionForm.reset({ code: '', description: '', reduction: 10, type: 'coupon', produitId: null, debut: '', fin: '' });
+  }
 
+  basculerPromotion(promo: Promotion): void {
+    promo.active = !promo.active;
+  }
+
+  supprimerPromotion(promo: Promotion): void {
+    this.promotions = this.promotions.filter((p) => p.id !== promo.id);
+  }
+
+  // ---------- Statistiques ----------
+  loadStats(): void {
+    this.statsLoading = true;
+    this.http
+      .get<any>(`${this.apiUrl}/fournisseur/stats`, this.auth.getAuthHeaders())
+      .pipe(
+        catchError((err) => {
+          console.error('stats', err);
+          this.statsLoading = false;
+          this.cdr.markForCheck();
+          return of({ success: false });
+        })
+      )
+      .subscribe((res) => {
+        if (res?.success && res.data) this.stats = res.data;
+        this.refreshCharts();
+        this.statsLoading = false;
+        this.cdr.markForCheck();
+      });
+  }
+
+  loadStatsSummary(): void {
+    this.http
+      .get<any>(`${this.apiUrl}/statistiques/fournisseur`, this.auth.getAuthHeaders())
+      .pipe(catchError(() => of({ success: false, data: {} })))
+      .subscribe((res) => {
+        this.statsSummary = res?.data || {};
+        this.refreshCharts();
+        this.cdr.markForCheck();
+      });
+  }
+
+  formatCurrency(v: number | undefined): string {
+    return (v || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+  }
+
+  // ---------- Profil ----------
+  sauvegarderProfil(): void {
+    const current = this.auth.currentUserValue;
+    if (!current) return;
     const payload = {
-      nom: this.newProduct.nom,
-      description: this.newProduct.description,
-      prix: this.newProduct.prix,
-      quantite: this.newProduct.quantite ?? 0,
-      status: this.newProduct.status,
-      categorie: this.newProduct.categorie,
-      promotionPercent: this.newProduct.promotionPercent ?? 0
+      nom_complet: this.businessInfo.nom || current.nom_complet,
+      adresse: this.businessInfo.adresse || null,
+      horaires: this.businessInfo.horaires || null
     };
-
-    this.http.put<any>(`${this.apiUrl}/fournisseur/produits/${this.selectedProduct.id}`, payload, this.getAuthOptions()).subscribe({
+    this.auth.updateProfile(payload).subscribe({
       next: (res) => {
-        if (res?.success && res.data) {
-          const idx = this.products.findIndex(p => p.id === this.selectedProduct?.id);
-          if (idx > -1) this.products[idx] = res.data;
-          this.toastService.showToast('Product updated successfully', 'success');
-          this.selectedProduct = null;
-          this.showProductForm = false;
-          this.cdr.markForCheck();
-        } else {
-          this.toastService.showToast('Product updated but response incomplete', 'warning');
-        }
+        if (res?.success) this.toast.showToast('Profil mis à jour', 'success');
       },
-      error: (err) => {
-        this.handleApiError(err, 'updateProduct');
-        this.toastService.showToast('Failed to update product', 'error');
-        this.cdr.markForCheck();
-      }
+      error: () => this.toast.showToast('Impossible de mettre à jour le profil', 'error')
     });
   }
 
-  deleteProduct(id: string): void {
-    if (!confirm('Are you sure you want to delete this product?')) return;
-
-    this.http.delete<any>(`${this.apiUrl}/fournisseur/produits/${id}`, this.getAuthOptions()).subscribe({
-      next: (res) => {
-        if (res?.success) {
-          this.products = this.products.filter(p => p.id !== id);
-          this.toastService.showToast('Product deleted successfully', 'success');
-          this.cdr.markForCheck();
-        } else {
-          this.toastService.showToast('Failed to delete product', 'warning');
-        }
-      },
-      error: (err) => {
-        this.handleApiError(err, 'deleteProduct');
-        this.toastService.showToast('Failed to delete product', 'error');
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  toggleProductStatus(product: Product): void {
-    const newStatus = product.status === 'active' ? 'inactive' : 'active';
-    const update = { status: newStatus };
-
-    this.http.patch<any>(`${this.apiUrl}/fournisseur/produits/${product.id}`, update, this.getAuthOptions()).subscribe({
-      next: (res) => {
-        if (res?.success) {
-          product.status = newStatus;
-          this.toastService.showToast(`Product ${newStatus}`, 'success');
-          this.cdr.markForCheck();
-        } else {
-          this.toastService.showToast('Failed to update product status', 'warning');
-        }
-      },
-      error: (err) => {
-        this.handleApiError(err, 'toggleProductStatus');
-        this.toastService.showToast('Failed to update product status', 'error');
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  // ---------- Orders ----------
-  viewOrderDetails(order: Order): void {
-    this.selectedOrder = order;
-    this.showOrderDetails = true;
-    this.cdr.markForCheck();
-  }
-
-  updateOrderStatus(order: Order, newStatus: string): void {
-    this.http.patch<any>(`${this.apiUrl}/fournisseur/commandes/${order.id}`, { statut: newStatus }, this.getAuthOptions()).subscribe({
-      next: (res) => {
-        if (res?.success) {
-          order.status = newStatus;
-          this.toastService.showToast('Order status updated', 'success');
-          this.cdr.markForCheck();
-        } else {
-          this.toastService.showToast('Failed to update order status', 'warning');
-        }
-      },
-      error: (err) => {
-        this.handleApiError(err, 'updateOrderStatus');
-        this.toastService.showToast('Failed to update order status', 'error');
-        this.cdr.markForCheck();
-      }
-    });
-  }
-
-  markAsReady(order: Order): void {
-    this.updateOrderStatus(order, 'ready');
-  }
-
-  notifyCourier(order: Order): void {
-    this.http.post<any>(`${this.apiUrl}/fournisseur/commandes/${order.id}/notifier-courrier`, {}, this.getAuthOptions()).subscribe({
-      next: (res) => {
-        if (res?.success) {
-          this.toastService.showToast('Courier notified for pickup', 'success');
-        } else {
-          this.toastService.showToast('Failed to notify courier', 'warning');
-        }
-      },
-      error: (err) => {
-        this.handleApiError(err, 'notifyCourier');
-        this.toastService.showToast('Failed to notify courier', 'error');
-      }
-    });
-  }
-
-  getOrderStatusColor(status: string): string {
-    const colors: { [key: string]: string } = {
-      pending: '#FFA500',
-      preparing: '#FF6B6B',
-      ready: '#4ECDC4',
-      picked_up: '#95E1D3',
-      delivered: '#2ECC71'
-    };
-    return colors[status] ?? '#999';
-  }
-
-  getTimeRemaining(estimatedPickup?: Date): string {
-    if (!estimatedPickup) return '--';
-    const now = Date.now();
-    const pickup = new Date(estimatedPickup).getTime();
-    const diff = pickup - now;
-    const minutes = Math.floor(diff / 60000);
-    return minutes > 0 ? `${minutes}m` : 'Overdue';
-  }
-
-  // ---------- Statistics / Reports ----------
-  getConversionRate(): number {
-    return this.stats.ordersMonth > 0 ? Math.round((this.stats.totalOrders / (this.stats.ordersMonth * 2.5)) * 100) : 0;
-  }
-
-  getNetRevenue(): number {
-    return Math.round(this.stats.revenueMonth * 0.95);
-  }
-
-  downloadReport(format: 'pdf' | 'excel'): void {
-    this.http.get(`${this.apiUrl}/fournisseur/reports?format=${format}`, { responseType: 'blob' }).subscribe({
-      next: (blob) => {
-        const type = format === 'pdf' ? 'application/pdf' : 'application/vnd.ms-excel';
-        const url = window.URL.createObjectURL(new Blob([blob], { type }));
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `rapport.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
-        link.click();
-        this.toastService.showToast(`Report downloaded as ${format.toUpperCase()}`, 'success');
-      },
-      error: (err) => {
-        this.handleApiError(err, 'downloadReport');
-        this.toastService.showToast('Failed to download report', 'error');
-      }
-    });
-  }
-
-  // ---------- Finance ----------
-  requestPayout(): void {
-    if (this.availableBalance <= 0) {
-      this.toastService.showToast('No balance available', 'info');
+  // ---------- Support & Chat ----------
+  envoyerSupport(): void {
+    if (!this.supportMessage.trim()) {
+      this.toast.showToast('Message vide', 'warning');
       return;
     }
-
-    this.http.post<any>(`${this.apiUrl}/fournisseur/payout`, { amount: this.availableBalance }, this.getAuthOptions()).subscribe({
-      next: (res) => {
-        if (res?.success) {
-          this.toastService.showToast('Payout request submitted', 'success');
-          this.availableBalance = 0;
-          this.loadFinanceData();
-          this.cdr.markForCheck();
-        } else {
-          this.toastService.showToast('Failed to submit payout request', 'warning');
-        }
-      },
-      error: (err) => {
-        this.handleApiError(err, 'requestPayout');
-        this.toastService.showToast('Failed to request payout', 'error');
-      }
-    });
+    // Pas d'endpoint dédié côté backend; on log et notifie
+    console.info('Support message', this.supportMessage);
+    this.toast.showToast('Message envoyé au support (local)', 'info');
+    this.supportMessage = '';
   }
 
-  // ---------- Schedule ----------
-  updateSchedule(): void {
-    const payload = {
-      opening_time: this.openingTime,
-      closing_time: this.closingTime
-    };
+  envoyerChat(): void {
+    if (!this.chatDraft.trim()) return;
+    this.chatMessages.push({ from: 'fournisseur', message: this.chatDraft, at: new Date() });
+    this.chatDraft = '';
+  }
 
-    this.http.post<any>(`${this.apiUrl}/fournisseur/schedule`, payload, this.getAuthOptions()).subscribe({
-      next: (res) => {
-        if (res?.success) {
-          this.toastService.showToast('Schedule updated successfully', 'success');
+  // ---------- Avis ----------
+  loadAvis(): void {
+    this.avisLoading = true;
+    this.http
+      .get<any>(`${this.apiUrl}/avis/fournisseur`, this.auth.getAuthHeaders())
+      .pipe(
+        catchError((err) => {
+          console.error('avis', err);
+          this.toast.showToast('Impossible de charger les avis', 'error');
+          this.avis = [];
+          this.avisLoading = false;
           this.cdr.markForCheck();
-        } else {
-          this.toastService.showToast('Failed to update schedule', 'warning');
-        }
-      },
-      error: (err) => {
-        this.handleApiError(err, 'updateSchedule');
-        this.toastService.showToast('Failed to update schedule', 'error');
+          return of({ success: false, data: [] });
+        })
+      )
+      .subscribe((res) => {
+        this.avis = res?.data || [];
+        this.avisLoading = false;
         this.cdr.markForCheck();
-      }
-    });
+      });
   }
 
-  toggleAvailability(): void {
-    this.isOpen = !this.isOpen;
-    const payload = { is_open: this.isOpen };
-
-    this.http.post<any>(`${this.apiUrl}/fournisseur/availability`, payload, this.getAuthOptions()).subscribe({
-      next: (res) => {
-        if (res?.success) {
-          this.toastService.showToast(`Store ${this.isOpen ? 'opened' : 'closed'}`, 'success');
-          this.cdr.markForCheck();
-        } else {
-          this.toastService.showToast('Failed to update availability', 'warning');
-          this.isOpen = !this.isOpen; // revert
-        }
-      },
-      error: (err) => {
-        this.handleApiError(err, 'toggleAvailability');
-        this.isOpen = !this.isOpen; // revert
-        this.toastService.showToast('Failed to update availability', 'error');
-        this.cdr.markForCheck();
-      }
-    });
+  repondreAvis(review: Review): void {
+    this.toast.showToast(`Réponse envoyée à ${review.author} (mock)`, 'info');
   }
 
-  // ---------- Messages ----------
-  sendMessage(recipient: string, message: string): void {
-    if (!recipient || !message) {
-      this.toastService.showToast('Recipient and message are required', 'warning');
-      return;
-    }
-
-    this.http.post<any>(`${this.apiUrl}/fournisseur/messages`, { recipient, message }, this.getAuthOptions()).subscribe({
-      next: (res) => {
-        if (res?.success) {
-          this.toastService.showToast('Message sent', 'success');
-        } else {
-          this.toastService.showToast('Failed to send message', 'warning');
-        }
-      },
-      error: (err) => {
-        this.handleApiError(err, 'sendMessage');
-        this.toastService.showToast('Failed to send message', 'error');
-      }
-    });
-  }
-
-  // ---------- Settings ----------
-  saveSettings(): void {
-    // implement saving logic if needed
-    this.toastService.showToast('Settings updated successfully', 'success');
-  }
-
-  // ---------- Error handling ----------
-  handleApiError(error: any, section: string): void {
-    // Silently ignore 404s for non-critical data sections (reviews, charts, etc.)
-    const silentSections = ['reviews', 'revenueByDate', 'ordersByStatus'];
-    if (error?.status === 404 && silentSections.includes(section)) {
-      console.debug(`[Dashboard] ${section}: 404 - data not yet available`);
-      return;
-    }
-
-    console.error(`API Error in ${section}:`, error);
-    if (!error) {
-      this.apiErrorMessages[section] = 'Unknown error';
-      return;
-    }
-
-    if (error.status === 401) {
-      this.apiErrorMessages[section] = 'Session expired. Please log in again.';
-      this.authService.logout();
-      this.router.navigate(['/login']);
-    } else if (error.status === 403) {
-      this.apiErrorMessages[section] = 'You do not have permission to perform this action.';
-    } else if (error.status === 404) {
-      this.apiErrorMessages[section] = 'Resource not found.';
-    } else if (error.status === 500) {
-      this.apiErrorMessages[section] = 'Server error. Please try again later.';
-    } else if (error.status === 0) {
-      this.apiErrorMessages[section] = 'Network error. Check your connection.';
-    } else {
-      this.apiErrorMessages[section] = error.error?.message ?? 'An error occurred.';
-    }
-    this.cdr.markForCheck();
-  }
-
-  clearApiError(section: string): void {
-    delete this.apiErrorMessages[section];
-    this.cdr.markForCheck();
-  }
-
-  hasApiError(section: string): boolean {
-    return !!this.apiErrorMessages[section];
-  }
-
-  getApiError(section: string): string {
-    return this.apiErrorMessages[section] ?? '';
-  }
-
-  // ---------- Logout ----------
+  // ---------- Profil / Auth ----------
   logout(): void {
-    if (!confirm('Are you sure you want to disconnect?')) return;
-    this.authService.logout();
-    this.toastService.showToast('Disconnected successfully', 'success');
-    this.router.navigate(['/']);
+    this.auth.logout();
+    this.toast.showToast('Déconnecté', 'info');
+  }
+
+  onProfileFileSelected(event: any): void {
+    const file = event?.target?.files?.[0];
+    this.profileFile = file || null;
+  }
+
+  uploadProfile(): void {
+    if (!this.profileFile) {
+      this.toast.showToast('Choisissez une image', 'warning');
+      return;
+    }
+    this.profileUploading = true;
+    this.auth.uploadProfileImage(this.profileFile).subscribe({
+      next: (resp) => {
+        if (resp?.success && resp.photo_url) {
+          this.toast.showToast('Photo mise à jour', 'success');
+        } else {
+          this.toast.showToast(resp?.message || 'Échec mise à jour photo', 'error');
+        }
+        this.profileUploading = false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('upload profile', err);
+        this.profileUploading = false;
+        this.toast.showToast('Erreur upload photo', 'error');
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  // ---------- Charts helpers ----------
+  refreshCharts(): void {
+    this.charts.orders = [
+      { label: 'Jour', value: this.stats.ordersToday || 0 },
+      { label: 'Semaine', value: this.stats.ordersWeek || 0 },
+      { label: 'Mois', value: this.stats.ordersMonth || 0 }
+    ];
+    this.charts.revenue = [
+      { label: 'Jour', value: this.stats.revenueToday || 0 },
+      { label: 'Semaine', value: this.stats.revenueWeek || 0 },
+      { label: 'Mois', value: this.stats.revenueMonth || 0 }
+    ];
+  }
+
+  chartBarWidth(val: number, max: number): string {
+    if (!max || max <= 0) return '0%';
+    const pct = Math.max(3, Math.min(100, (val / max) * 100));
+    return `${pct}%`;
+  }
+
+  // ---------- Pagination Produits ----------
+  updatePaginatedProducts(): void {
+    const start = (this.currentPage - 1) * this.itemsPerPage;
+    const end = start + this.itemsPerPage;
+    this.produitsPagines = this.produits.slice(start, end);
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.produits.length / this.itemsPerPage);
+  }
+
+  goToPage(page: number): void {
+    if (page >= 1 && page <= this.totalPages) {
+      this.currentPage = page;
+      this.updatePaginatedProducts();
+      this.cdr.markForCheck();
+    }
+  }
+
+  nextPage(): void {
+    if (this.currentPage < this.totalPages) {
+      this.currentPage++;
+      this.updatePaginatedProducts();
+      this.cdr.markForCheck();
+    }
+  }
+
+  previousPage(): void {
+    if (this.currentPage > 1) {
+      this.currentPage--;
+      this.updatePaginatedProducts();
+      this.cdr.markForCheck();
+    }
+  }
+
+  private randomId(): string {
+    const globalCrypto: any = (typeof crypto !== 'undefined') ? crypto : null;
+    if (globalCrypto?.randomUUID) return globalCrypto.randomUUID();
+    return Math.random().toString(36).slice(2, 10);
   }
 }

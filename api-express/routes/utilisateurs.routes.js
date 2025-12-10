@@ -1,23 +1,22 @@
 // routes/utilisateurs.routes.js
 const express = require('express');
-const pool = require('../config/database'); // <- IMPORT CORRECT
+const pool = require('../config/database');
 const { body, param, query, validationResult } = require('express-validator');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const fs = require('fs');
+const { authMiddleware } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 const SALT_ROUNDS = 10;
 
-// util helper: retire mot_de_passe des objets utilisateur renvoyés
 function sanitizeUser(row) {
   if (!row) return null;
   const { mot_de_passe, ...rest } = row;
   return rest;
 }
 
-/**
- * GET /utilisateurs
- */
 router.get(
   '/',
   [
@@ -31,8 +30,8 @@ router.get(
       const errors = validationResult(req);
       if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-      const page = req.query.page || 1;
-      const limit = req.query.limit || 20;
+      const page = parseInt(req.query.page, 10) || 1;
+      const limit = parseInt(req.query.limit, 10) || 20;
       const offset = (page - 1) * limit;
       const { role, search } = req.query;
 
@@ -44,6 +43,7 @@ router.get(
         params.push(role);
       }
       if (search) {
+        // use same parameter for both email and nom_complet
         where.push(`(email ILIKE $${idx} OR nom_complet ILIKE $${idx})`);
         params.push(`%${search}%`);
         idx++;
@@ -67,9 +67,6 @@ router.get(
   }
 );
 
-/**
- * GET /utilisateurs/:id
- */
 router.get(
   '/:id',
   [param('id').isUUID().withMessage('id invalide')],
@@ -92,9 +89,6 @@ router.get(
   }
 );
 
-/**
- * POST /utilisateurs
- */
 router.post(
   '/',
   [
@@ -113,7 +107,6 @@ router.post(
 
       const { email, mot_de_passe, nom_complet, telephone, role, statut, photo_profil } = req.body;
 
-      // vérifier existence email
       const existsRes = await pool.query('SELECT 1 FROM utilisateurs WHERE email = $1', [email]);
       if (existsRes.rowCount > 0) return res.status(409).json({ message: 'Email déjà utilisé' });
 
@@ -144,9 +137,6 @@ router.post(
   }
 );
 
-/**
- * PUT /utilisateurs/:id
- */
 router.put(
   '/:id',
   [
@@ -203,9 +193,6 @@ router.put(
   }
 );
 
-/**
- * DELETE /utilisateurs/:id
- */
 router.delete(
   '/:id',
   [param('id').isUUID().withMessage('id invalide')],
@@ -223,5 +210,40 @@ router.delete(
     }
   }
 );
+
+// Upload photo de profil
+router.post('/:id/photo', authMiddleware, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Autoriser l'utilisateur lui-même ou un admin
+    if (req.user.user_id !== id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Accès refusé' });
+    }
+
+    if (!req.files || !req.files.image) {
+      return res.status(400).json({ success: false, message: 'Image requise' });
+    }
+    const image = req.files.image;
+    if (Array.isArray(image)) {
+      return res.status(400).json({ success: false, message: 'Une seule image autorisée' });
+    }
+
+    const uploadDir = path.join(__dirname, '../uploads/profile');
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+    const sanitize = (name) => name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filename = `${uuidv4()}_${Date.now()}_${sanitize(image.name || 'profile')}`;
+    const filepath = path.join(uploadDir, filename);
+    await image.mv(filepath);
+
+    const publicPath = `/uploads/profile/${filename}`;
+    await pool.query('UPDATE utilisateurs SET photo_profil = $1 WHERE id = $2', [publicPath, id]);
+
+    return res.json({ success: true, photo_url: publicPath });
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = router;

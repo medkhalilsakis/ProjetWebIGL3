@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, inject } from '@angular/core';
+import { Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, OnInit, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { Router, RouterLink } from '@angular/router';
@@ -14,6 +14,16 @@ interface City {
   color?: string;
 }
 
+interface CartItem {
+  product: {
+    id?: string;
+    nom: string;
+    prix: number;
+    prix_promotion?: number;
+  };
+  quantity: number;
+}
+
 @Component({
   selector: 'app-accueil',
   standalone: true,
@@ -21,12 +31,13 @@ interface City {
   templateUrl: './accueil.html',
   styleUrls: ['./accueil.css'],
 })
-export class Accueil implements AfterViewInit, OnDestroy {
+export class Accueil implements AfterViewInit, OnDestroy, OnInit {
   @ViewChild('mapContainer', { static: false }) mapContainer!: ElementRef<HTMLDivElement>;
   private router = inject(Router);
   private map: L.Map | null = null;
   private markers: L.Marker[] = [];
   private polygons: L.Polygon[] = [];
+  private cartKey = 'lx_cart';
 
   services = [
     { 
@@ -165,6 +176,12 @@ export class Accueil implements AfterViewInit, OnDestroy {
 
   currentCity: City | null = null;
   hoveredCity: City | null = null;
+  cart: CartItem[] = [];
+  showCartPanel = false;
+
+  ngOnInit(): void {
+    this.loadCart();
+  }
 
   ngAfterViewInit(): void {
     setTimeout(() => {
@@ -195,6 +212,35 @@ export class Accueil implements AfterViewInit, OnDestroy {
       } catch { 
         (window as any).openCityDetails = undefined; 
       }
+    }
+  }
+
+  // ---------- Cart (display only) ----------
+  cartTotal(): number {
+    return this.cart.reduce((sum, item) => {
+      const price = item.product.prix_promotion || item.product.prix;
+      return sum + price * item.quantity;
+    }, 0);
+  }
+
+  get cartCount(): number {
+    return this.cart.reduce((sum, item) => sum + item.quantity, 0);
+  }
+
+  checkoutCart(): void {
+    this.router.navigate(['/login'], { queryParams: { redirectTo: '/client/dashboard' } });
+  }
+
+  toggleCartPanel(): void {
+    this.showCartPanel = !this.showCartPanel;
+  }
+
+  private loadCart(): void {
+    try {
+      const raw = localStorage.getItem(this.cartKey);
+      if (raw) this.cart = JSON.parse(raw);
+    } catch {
+      this.cart = [];
     }
   }
 

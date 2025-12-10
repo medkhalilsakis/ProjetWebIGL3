@@ -1,3 +1,4 @@
+// src/app/services/authentification.ts
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Router } from '@angular/router';
@@ -8,7 +9,7 @@ export interface User {
   id: string;
   email: string;
   nom_complet: string;
-  telephone: string;
+  telephone?: string;
   role: 'client' | 'fournisseur' | 'livreur' | 'admin';
   statut?: string;
   photo_profil?: string;
@@ -28,15 +29,25 @@ export class AuthService {
     private http: HttpClient,
     private router: Router
   ) {
-    const storedUser = sessionStorage.getItem('currentUser');
-    this.currentUserSubject = new BehaviorSubject<User | null>(
-      storedUser ? JSON.parse(storedUser) : null
-    );
+    // Load from localStorage if present (remember me), else sessionStorage
+    const stored = localStorage.getItem('currentUser') ?? sessionStorage.getItem('currentUser');
+    this.currentUserSubject = new BehaviorSubject<User | null>(stored ? JSON.parse(stored) : null);
     this.currentUser = this.currentUserSubject.asObservable();
   }
 
   public get currentUserValue(): User | null {
     return this.currentUserSubject.value;
+  }
+
+  public get currentToken(): string | null {
+    // check several keys and storages
+    return (
+      localStorage.getItem('session_token') ||
+      sessionStorage.getItem('session_token') ||
+      localStorage.getItem('token') ||
+      sessionStorage.getItem('token') ||
+      null
+    );
   }
 
   public get isAuthenticated(): boolean {
@@ -48,21 +59,51 @@ export class AuthService {
   }
 
   public getAuthHeaders(): { headers?: HttpHeaders } {
-    const token = sessionStorage.getItem('session_token');
+    const token = this.currentToken;
     if (token) {
-      return { headers: new HttpHeaders({ 'Authorization': `Bearer ${token}` }) };
+      const headers = new HttpHeaders({
+        'Authorization': `Bearer ${token}`,
+        'x-session-token': token
+      });
+      return { headers };
     }
     return {};
+  }
+
+  // Store current user centrally.
+  // persist: if true -> localStorage (remember me), else sessionStorage.
+  public setCurrentUser(user: User | null, persist = false) {
+    if (user) {
+      const serialized = JSON.stringify(user);
+      if (persist) {
+        localStorage.setItem('currentUser', serialized);
+      } else {
+        sessionStorage.setItem('currentUser', serialized);
+      }
+      this.currentUserSubject.next(user);
+    } else {
+      // logout
+      sessionStorage.removeItem('currentUser');
+      sessionStorage.removeItem('session_token');
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('session_token');
+      this.currentUserSubject.next(null);
+    }
   }
 
   login(email: string, mot_de_passe: string): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/login`, { email, mot_de_passe })
       .pipe(map(response => {
         if (response?.success && response.user) {
-          // Stocker l'utilisateur et le token
+          // keep user in sessionStorage by default; caller (component) may move token to localStorage for "remember me"
           sessionStorage.setItem('currentUser', JSON.stringify(response.user));
           if (response.user.session_token) {
             sessionStorage.setItem('session_token', response.user.session_token);
+          }
+          // if there's already a persistent session_token in localStorage (remember me), keep it
+          if (localStorage.getItem('session_token')) {
+            // ensure currentUser is also stored persistently
+            localStorage.setItem('currentUser', JSON.stringify(response.user));
           }
           this.currentUserSubject.next(response.user);
         }
@@ -70,18 +111,21 @@ export class AuthService {
       }));
   }
 
-  // Extend the current session expiration on the server
   extendSession(): Observable<any> {
-    const token = sessionStorage.getItem('session_token');
+    const token = this.currentToken;
     if (!token) return of({ success: false, message: 'No session token' });
 
-    // sessions endpoint lives under /api/sessions
-    return this.http.post<any>(`http://localhost:3000/api/sessions/extend`, { session_token: token })
+    // prefer header auth, but server accepts token in body too
+    return this.http.post<any>(`http://localhost:3000/api/sessions/extend`, {}, this.getAuthHeaders())
       .pipe(map(response => {
         if (response?.success && response.session) {
-          // Optionally update token/expiry if server returned updated session/user
+          // If server returned updated session token, update storage
           if (response.session.token_session) {
+            // update both sessionStorage and localStorage token if present
             sessionStorage.setItem('session_token', response.session.token_session);
+            if (localStorage.getItem('session_token')) {
+              localStorage.setItem('session_token', response.session.token_session);
+            }
           }
         }
         return response;
@@ -89,51 +133,57 @@ export class AuthService {
   }
 
   register(userData: any): Observable<any> {
-    // register via /api/auth/register
     return this.http.post<any>(`${this.apiUrl}/register`, userData);
   }
 
   logout(): void {
-    const token = sessionStorage.getItem('session_token');
+    const token = this.currentToken;
     if (token) {
-      // appel asynchrone pour informer le serveur (on ne bloque pas)
       this.http.post(`${this.apiUrl}/logout`, { session_token: token }).subscribe({
         next: () => {},
         error: () => {}
       });
     }
 
+    // clear storages and subject
     sessionStorage.removeItem('currentUser');
     sessionStorage.removeItem('session_token');
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('session_token');
     this.currentUserSubject.next(null);
-    this.router.navigate(['/login']);
+    try { this.router.navigate(['/login']); } catch (e) {}
   }
 
   verifySession(): Observable<any> {
-    const token = sessionStorage.getItem('session_token');
+    const token = this.currentToken;
     if (!token) return of({ success: false });
 
     return this.http.post<any>(`${this.apiUrl}/verify-session`, { session_token: token })
       .pipe(map(response => {
         if (response?.success && response.user) {
-          // Met à jour l'utilisateur stocké avec les données renvoyées par le serveur
-          sessionStorage.setItem('currentUser', JSON.stringify(response.user));
-          if (response.user.session_token) sessionStorage.setItem('session_token', response.user.session_token);
+          // keep persistent if token is in localStorage
+          const persist = !!localStorage.getItem('session_token');
+          if (persist) {
+            localStorage.setItem('currentUser', JSON.stringify(response.user));
+            if (response.user.session_token) localStorage.setItem('session_token', response.user.session_token);
+          } else {
+            sessionStorage.setItem('currentUser', JSON.stringify(response.user));
+            if (response.user.session_token) sessionStorage.setItem('session_token', response.user.session_token);
+          }
           this.currentUserSubject.next(response.user);
         } else {
+          // invalid -> logout
           this.logout();
         }
         return response;
       }));
   }
 
-  // Validate an arbitrary token (useful for deep-links or external checks)
   validateToken(token: string): Observable<any> {
     if (!token) return of({ success: false });
     return this.http.post<any>(`http://localhost:3000/api/sessions/validate`, { session_token: token });
   }
 
-  // Exemple d'upload d'image : assure-toi d'avoir un endpoint backend qui accepte ça
   uploadProfileImage(file: File): Observable<any> {
     const current = this.currentUserValue;
     if (!current) return of({ success: false, message: 'Non authentifié' });
@@ -141,11 +191,12 @@ export class AuthService {
     const fd = new FormData();
     fd.append('image', file);
 
-    // Exemple : POST /api/utilisateurs/:id/photo
     const url = `http://localhost:3000/api/utilisateurs/${current.id}/photo`;
     return this.http.post<any>(url, fd, this.getAuthHeaders()).pipe(map(response => {
       if (response?.success && response.photo_url) {
         const updated = { ...current, photo_profil: response.photo_url };
+        // persist according to existing storage
+        if (localStorage.getItem('currentUser')) localStorage.setItem('currentUser', JSON.stringify(updated));
         sessionStorage.setItem('currentUser', JSON.stringify(updated));
         this.currentUserSubject.next(updated);
       }
@@ -153,7 +204,6 @@ export class AuthService {
     }));
   }
 
-  // Update profile : utilise /api/utilisateurs/:id (PUT)
   updateProfile(data: any): Observable<any> {
     const current = this.currentUserValue;
     if (!current) return of({ success: false, message: 'Non authentifié' });
@@ -163,6 +213,7 @@ export class AuthService {
       .pipe(map(response => {
         if (response?.utilisateur) {
           const updated = { ...current, ...response.utilisateur };
+          if (localStorage.getItem('currentUser')) localStorage.setItem('currentUser', JSON.stringify(updated));
           sessionStorage.setItem('currentUser', JSON.stringify(updated));
           this.currentUserSubject.next(updated);
         }

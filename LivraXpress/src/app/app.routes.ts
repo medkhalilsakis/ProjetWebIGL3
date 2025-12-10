@@ -6,6 +6,7 @@ import { Signup } from './signup/signup';
 import { ClientDashboardComponent } from './client-dashboard/client-dashboard';
 import { FournisseurDashboard } from './fournisseur-dashboard/fournisseur-dashboard';
 import { Accueil } from './accueil/accueil';
+import { ListProduits } from './list-produits/list-produits';
 
 export const routes: Routes = [
 
@@ -18,6 +19,10 @@ export const routes: Routes = [
   // 🔑 Auth pages
   { path: 'login', component: Login },
   { path: 'register', component: Signup },
+
+  // 🛍️ Products listing (public)
+  { path: 'produits', component: ListProduits },
+  { path: 'list-produits', component: ListProduits },
 
   // 🧑‍💼 Routes protégées client
   {

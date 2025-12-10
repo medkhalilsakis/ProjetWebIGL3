@@ -1,12 +1,12 @@
 // middleware/auth.middleware.js
 const db = require('../config/database');
+const jwt = require('jsonwebtoken');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
 const authMiddleware = async (req, res, next) => {
   try {
-    // Récupération sûre du token depuis plusieurs sources :
-    // - Header Authorization: "Bearer <token>"
-    // - body.session_token (pour POST si tu l'envoies dans le body)
-    // - query param ?session_token=...
+    // Récupération sûre du token depuis plusieurs sources
     const authHeader = (req.headers && (req.headers.authorization || req.headers.Authorization)) || req.get?.('authorization') || null;
     const tokenFromHeader = authHeader ? String(authHeader).replace(/^Bearer\s+/i, '') : null;
     const tokenFromBody = (req.body && typeof req.body === 'object' && req.body.session_token) ? req.body.session_token : null;
@@ -15,25 +15,38 @@ const authMiddleware = async (req, res, next) => {
     const sessionToken = tokenFromHeader || tokenFromBody || tokenFromQuery;
 
     if (!sessionToken) {
-      // Pas de token, on renvoie 401 (et on ne plante plus)
       return res.status(401).json({ success: false, message: 'Token manquant' });
     }
 
-    const result = await db.query(
-      `SELECT s.*, u.id as user_id, u.role, u.email, u.nom_complet, u.statut, u.photo_profil
-       FROM sessions_utilisateurs s
-       JOIN utilisateurs u ON s.utilisateur_id = u.id
-       WHERE s.token_session = $1
-         AND s.est_active = true
-         AND s.date_expiration > CURRENT_TIMESTAMP`,
-      [sessionToken]
-    );
-
-    if (!result || result.rows.length === 0) {
-      return res.status(401).json({ success: false, message: 'Session invalide ou expirée' });
+    let decoded;
+    try {
+      decoded = jwt.verify(sessionToken, JWT_SECRET);
+    } catch (e) {
+      return res.status(401).json({ success: false, message: 'Token invalide ou expiré' });
     }
 
-    req.user = result.rows[0];
+    // Vérifier que l'utilisateur existe toujours
+    const userRes = await db.query(
+      `SELECT id, email, role, nom_complet, statut, photo_profil FROM utilisateurs WHERE id = $1 LIMIT 1`,
+      [decoded.user_id]
+    );
+    if (!userRes.rows.length) {
+      return res.status(401).json({ success: false, message: 'Utilisateur introuvable' });
+    }
+    const userRow = userRes.rows[0];
+
+    req.user = {
+      user_id: userRow.id,
+      id: userRow.id,
+      utilisateur_id: userRow.id,
+      role: userRow.role,
+      email: userRow.email,
+      nom_complet: userRow.nom_complet,
+      statut: userRow.statut,
+      photo_profil: userRow.photo_profil,
+      token: sessionToken
+    };
+
     return next();
   } catch (error) {
     console.error('Erreur auth middleware:', error && error.stack ? error.stack : error);
