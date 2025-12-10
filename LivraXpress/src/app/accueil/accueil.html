@@ -1,0 +1,515 @@
+<div class="accueil-container">
+  <!-- Header Navigation -->
+  <header class="main-header">
+    <div class="container">
+      <div class="logo-section">
+        <mat-icon class="logo-icon">local_shipping</mat-icon>
+        <span class="logo-text">Livra<span class="logo-highlight">Xpress</span></span>
+      </div>
+
+      <nav class="main-nav">
+        <a routerLink="/" class="nav-item active">Accueil</a>
+        <a routerLink="/produits" class="nav-item">Produits</a>
+        <a routerLink="/cities" class="nav-item">Villes</a>
+        <a routerLink="/contact" class="nav-item">Contact</a>
+      </nav>
+
+      <div class="auth-buttons">
+        <button mat-stroked-button routerLink="/login" class="signin-btn">
+          <mat-icon>login</mat-icon>
+          <span>Connexion</span>
+        </button>
+        <button mat-raised-button routerLink="/register" class="signup-btn">
+          <mat-icon>person_add</mat-icon>
+          <span>Inscription</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Floating Cart Toggle -->
+  <button class="floating-cart-toggle" (click)="toggleCartPanel()" aria-label="Ouvrir le panier">
+  <!-- Utiliser FontAwesome si disponible -->
+  <i class="fas fa-shopping-cart"></i>
+  <!-- OU utiliser Material Icon si FontAwesome n'est pas disponible -->
+  <!-- <mat-icon>shopping_cart</mat-icon> -->
+  
+  <span class="cart-badge" *ngIf="cartCount > 0" [attr.aria-label]="cartCount + ' articles dans le panier'">
+    {{ cartCount }}
+  </span>
+</button>
+
+  <!-- Floating Cart Panel -->
+  <aside class="floating-cart-panel" *ngIf="showCartPanel">
+    <div class="cart-header">
+      <div>
+        <h3>Mon panier</h3>
+        <p class="cart-subtitle">{{ cart.length }} article(s)</p>
+      </div>
+      <button class="cart-close" (click)="toggleCartPanel()" aria-label="Fermer le panier">
+        <i class="fas fa-times"></i>
+      </button>
+    </div>
+
+    <div class="cart-items" *ngIf="cart.length > 0; else cartEmpty">
+      <div class="cart-item" *ngFor="let item of cart">
+        <div class="cart-item-info">
+          <span class="cart-item-name">{{ item.product.nom }}</span>
+          <span class="cart-item-price">
+            {{ (item.product.prix_promotion || item.product.prix) | currency:'TND':'symbol' }} x {{ item.quantity }}
+          </span>
+        </div>
+      </div>
+    </div>
+    <ng-template #cartEmpty>
+      <div class="cart-empty">
+        <i class="fas fa-box-open"></i>
+        <p>Votre panier est vide</p>
+      </div>
+    </ng-template>
+
+    <div class="cart-footer">
+      <div class="cart-total">
+        <span>Total</span>
+        <strong>{{ cartTotal() | currency:'TND':'symbol' }}</strong>
+      </div>
+      <button class="btn-checkout" [disabled]="cart.length === 0" (click)="checkoutCart()">
+        <i class="fas fa-lock"></i>
+        Finaliser ma commande
+      </button>
+    </div>
+  </aside>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="hero-background">
+      <div class="gradient-overlay"></div>
+    </div>
+
+    <div class="container">
+      <div class="hero-content">
+        <div class="hero-badge">
+          <mat-icon>verified</mat-icon>
+          <span>Plus de 10 000 utilisateurs nous font confiance</span>
+        </div>
+        
+        <h1 class="hero-title">
+          Livraison <span class="highlight-text">rapide</span> et 
+          <span class="highlight-text">fiable</span> en Tunisie
+        </h1>
+        
+        <p class="hero-subtitle">
+          Restaurants, courses, pharmacies et plus encore. 
+          Commandez en ligne et recevez vos produits en moins de 30 minutes.
+        </p>
+
+        <div class="hero-buttons">
+          <button mat-raised-button (click)="goToSignup()" class="primary-btn">
+            <mat-icon>shopping_cart</mat-icon>
+            <span>Commander maintenant</span>
+          </button>
+          <button mat-stroked-button class="secondary-btn">
+            <mat-icon>play_circle</mat-icon>
+            <span>Voir comment ça marche</span>
+          </button>
+        </div>
+
+        <div class="trust-indicators">
+          <div class="indicator">
+            <div class="indicator-icon">👥</div>
+            <div class="indicator-content">
+              <strong>10 000+</strong>
+              <span>Clients satisfaits</span>
+            </div>
+          </div>
+          <div class="indicator">
+            <div class="indicator-icon">🏪</div>
+            <div class="indicator-content">
+              <strong>200+</strong>
+              <span>Partenaires</span>
+            </div>
+          </div>
+          <div class="indicator">
+            <div class="indicator-icon">⭐</div>
+            <div class="indicator-content">
+              <strong>4.8/5</strong>
+              <span>Note moyenne</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Map Section -->
+  <section class="map-section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-badge">
+          <mat-icon>location_on</mat-icon>
+          <span>Couverture nationale</span>
+        </div>
+        <h2 class="section-title">Nos zones de livraison</h2>
+        <p class="section-subtitle">
+          Découvrez les 6 gouvernorats où nous opérons actuellement. 
+          D'autres régions seront bientôt disponibles.
+        </p>
+      </div>
+      
+      <div class="map-content">
+        <div class="cities-sidebar">
+          <h3 class="sidebar-title">Villes couvertes</h3>
+          
+          <div class="cities-list">
+            <div 
+              *ngFor="let city of deliveryZones; trackBy: trackByCity"
+              class="city-card" 
+              [class.active]="city.active" 
+              [class.hovered]="hoveredCity?.name === city.name"
+              (mouseenter)="hoveredCity = city"
+              (mouseleave)="hoveredCity = null"
+              (click)="openCityDetails(city)"
+            >
+              <div class="city-header">
+                <div class="city-marker">
+                  <span class="city-initial">{{city.name.charAt(0)}}</span>
+                </div>
+                <div class="city-info">
+                  <h4 class="city-name">{{city.name}}</h4>
+                  <p class="city-population">{{city.population}} habitants</p>
+                </div>
+              </div>
+              
+              <div class="city-footer">
+                <span class="status-badge" [class.active]="city.active">
+                  <mat-icon>{{city.active ? 'check_circle' : 'schedule'}}</mat-icon>
+                  <span>{{city.active ? 'Actif' : 'Bientôt'}}</span>
+                </span>
+                <button class="details-btn" (click)="openCityDetails(city); $event.stopPropagation()">
+                  <mat-icon>arrow_forward</mat-icon>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="map-stats">
+            <div class="stat-box">
+              <mat-icon>location_city</mat-icon>
+              <div class="stat-info">
+                <span class="stat-value">6</span>
+                <span class="stat-label">Gouvernorats</span>
+              </div>
+            </div>
+            <div class="stat-box">
+              <mat-icon>groups</mat-icon>
+              <div class="stat-info">
+                <span class="stat-value">5.5M+</span>
+                <span class="stat-label">Personnes</span>
+              </div>
+            </div>
+            <div class="stat-box">
+              <mat-icon>access_time</mat-icon>
+              <div class="stat-info">
+                <span class="stat-value">~25min</span>
+                <span class="stat-label">Livraison</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="map-wrapper">
+          <div #mapContainer class="map-container" id="map">
+            <!-- La carte Leaflet sera injectée ici par le TypeScript -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Services Section -->
+  <section class="services-section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-badge">
+          <mat-icon>apps</mat-icon>
+          <span>Nos services</span>
+        </div>
+        <h2 class="section-title">Tout ce dont vous avez besoin</h2>
+        <p class="section-subtitle">
+          De la nourriture aux médicaments, nous livrons tout ce qui compte pour vous
+        </p>
+      </div>
+
+      <div class="services-grid">
+        <div 
+          *ngFor="let service of services; trackBy: trackByService" 
+          class="service-card" 
+          (click)="viewService(service.id)"
+        >
+          <div class="service-icon-wrapper">
+            <mat-icon class="service-icon">{{service.icon}}</mat-icon>
+          </div>
+          <h3 class="service-title">{{service.title}}</h3>
+          <p class="service-description">{{service.description}}</p>
+          <button class="service-link">
+            <span>En savoir plus</span>
+            <mat-icon>arrow_forward</mat-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features-section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-badge">
+          <mat-icon>star</mat-icon>
+          <span>Nos avantages</span>
+        </div>
+        <h2 class="section-title">Pourquoi choisir LivraXpress</h2>
+        <p class="section-subtitle">
+          Une expérience de livraison optimisée pour votre confort
+        </p>
+      </div>
+
+      <div class="features-grid">
+        <div *ngFor="let feature of features; trackBy: trackByFeature" class="feature-card">
+          <div class="feature-icon-wrapper">
+            <mat-icon class="feature-icon">{{feature.icon}}</mat-icon>
+          </div>
+          <h3 class="feature-title">{{feature.title}}</h3>
+          <p class="feature-description">{{feature.description}}</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Testimonials Section -->
+  <section class="testimonials-section">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-badge">
+          <mat-icon>forum</mat-icon>
+          <span>Témoignages</span>
+        </div>
+        <h2 class="section-title">Ce que disent nos utilisateurs</h2>
+        <p class="section-subtitle">
+          Des milliers de clients satisfaits partagent leur expérience
+        </p>
+      </div>
+
+      <div class="testimonials-grid">
+        <div *ngFor="let testimonial of testimonials; trackBy: trackByTestimonial" class="testimonial-card">
+          <div class="testimonial-header">
+            <div class="user-avatar">
+              <span>{{testimonial.name.charAt(0)}}</span>
+            </div>
+            <div class="user-details">
+              <h4 class="user-name">{{testimonial.name}}</h4>
+              <span class="user-role">{{testimonial.role}}</span>
+            </div>
+          </div>
+          
+          <p class="testimonial-text">"{{testimonial.text}}"</p>
+          
+          <div class="testimonial-rating">
+            <mat-icon *ngFor="let i of [1,2,3,4,5]" class="star-icon">star</mat-icon>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta-section">
+    <div class="container">
+      <div class="cta-content">
+        <div class="cta-icon">
+          <mat-icon>rocket_launch</mat-icon>
+        </div>
+        <h2 class="cta-title">Prêt à commencer ?</h2>
+        <p class="cta-subtitle">
+          Rejoignez des milliers d'utilisateurs qui simplifient leur quotidien avec LivraXpress
+        </p>
+        <button mat-raised-button (click)="goToSignup()" class="cta-button">
+          <mat-icon>person_add</mat-icon>
+          <span>Créer mon compte gratuit</span>
+        </button>
+        <p class="cta-note">
+          <mat-icon>check_circle</mat-icon>
+          Sans engagement • Annulation gratuite à tout moment
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="main-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-column brand-column">
+          <div class="footer-logo">
+            <mat-icon class="logo-icon">local_shipping</mat-icon>
+            <span class="logo-text">Livra<span class="logo-highlight">Xpress</span></span>
+          </div>
+          <p class="footer-description">
+            La plateforme de livraison à domicile la plus rapide et fiable en Tunisie. 
+            Commandez en ligne et recevez vos produits en moins de 30 minutes.
+          </p>
+          <div class="social-links">
+  <!-- Facebook -->
+  <button mat-icon-button class="social-btn facebook" aria-label="Facebook">
+    <i class="fab fa-facebook-f"></i>
+  </button>
+  
+  <!-- LinkedIn -->
+  <button mat-icon-button class="social-btn linkedin" aria-label="LinkedIn">
+    <i class="fab fa-linkedin-in"></i>
+  </button>
+  
+  <!-- Twitter/X -->
+  <button mat-icon-button class="social-btn twitter" aria-label="Twitter">
+    <i class="fab fa-twitter"></i>
+  </button>
+  
+  <!-- Instagram -->
+  <button mat-icon-button class="social-btn instagram" aria-label="Instagram">
+    <i class="fab fa-instagram"></i>
+  </button>
+</div>
+        </div>
+
+        <div class="footer-column">
+          <h4 class="footer-title">Services</h4>
+          <ul class="footer-links">
+            <li><a routerLink="/restaurants">Restaurants</a></li>
+            <li><a routerLink="/supermarkets">Supermarchés</a></li>
+            <li><a routerLink="/pharmacies">Pharmacies</a></li>
+            <li><a routerLink="/flowers">Fleurs & Cadeaux</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-column">
+          <h4 class="footer-title">Entreprise</h4>
+          <ul class="footer-links">
+            <li><a routerLink="/about">À propos</a></li>
+            <li><a routerLink="/careers">Carrières</a></li>
+            <li><a routerLink="/press">Presse</a></li>
+            <li><a routerLink="/partners">Devenir partenaire</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-column">
+          <h4 class="footer-title">Aide</h4>
+          <ul class="footer-links">
+            <li><a routerLink="/faq">FAQ</a></li>
+            <li><a routerLink="/support">Support</a></li>
+            <li><a routerLink="/contact">Contact</a></li>
+            <li><a routerLink="/delivery-info">Infos livraison</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-column">
+          <h4 class="footer-title">Légal</h4>
+          <ul class="footer-links">
+            <li><a routerLink="/mentions-legales">Mentions légales</a></li>
+            <li><a routerLink="/politique-confidentialite">Confidentialité</a></li>
+            <li><a routerLink="/conditions-utilisation">CGU</a></li>
+            <li><a routerLink="/cookies">Cookies</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p class="copyright">© 2025 LivraXpress. Tous droits réservés.</p>
+        <div class="footer-bottom-links">
+          <a routerLink="/sitemap">Plan du site</a>
+          <span class="separator">•</span>
+          <a routerLink="/accessibility">Accessibilité</a>
+          <span class="separator">•</span>
+          <a routerLink="/security">Sécurité</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- City Details Modal -->
+  @if (currentCity; as city) {
+    <div class="modal-overlay" (click)="closeCityDetails()">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <button class="modal-close" (click)="closeCityDetails()">
+          <mat-icon>close</mat-icon>
+        </button>
+        
+        <div class="modal-header">
+          <div class="modal-icon">
+            <mat-icon>location_city</mat-icon>
+          </div>
+          <h2 class="modal-title">{{city.name}}</h2>
+          <span class="modal-badge" [class.active]="city.active">
+            <mat-icon>{{city.active ? 'check_circle' : 'schedule'}}</mat-icon>
+            <span>{{city.active ? 'Service actif' : 'Bientôt disponible'}}</span>
+          </span>
+        </div>
+        
+        <div class="modal-body">
+          <div class="modal-stats">
+            <div class="modal-stat-card">
+              <mat-icon>groups</mat-icon>
+              <div class="modal-stat-info">
+                <span class="modal-stat-value">{{city.population}}</span>
+                <span class="modal-stat-label">Population</span>
+              </div>
+            </div>
+            <div class="modal-stat-card">
+              <mat-icon>access_time</mat-icon>
+              <div class="modal-stat-info">
+                <span class="modal-stat-value">~25 min</span>
+                <span class="modal-stat-label">Temps moyen</span>
+              </div>
+            </div>
+            <div class="modal-stat-card">
+              <mat-icon>store</mat-icon>
+              <div class="modal-stat-info">
+                <span class="modal-stat-value">50+</span>
+                <span class="modal-stat-label">Partenaires</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="modal-services">
+            <h3 class="modal-services-title">Services disponibles</h3>
+            <div class="modal-services-grid">
+              <div class="modal-service-item">
+                <mat-icon>restaurant</mat-icon>
+                <span>Restaurants</span>
+              </div>
+              <div class="modal-service-item">
+                <mat-icon>local_grocery_store</mat-icon>
+                <span>Courses</span>
+              </div>
+              <div class="modal-service-item">
+                <mat-icon>local_pharmacy</mat-icon>
+                <span>Pharmacies</span>
+              </div>
+              <div class="modal-service-item">
+                <mat-icon>local_florist</mat-icon>
+                <span>Fleurs</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="modal-cta">
+            <p class="modal-cta-text">Prêt à commander à {{city.name}} ?</p>
+            <button mat-raised-button (click)="goToSignup()" class="modal-cta-button">
+              <mat-icon>shopping_cart</mat-icon>
+              <span>Commencer maintenant</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+</div>

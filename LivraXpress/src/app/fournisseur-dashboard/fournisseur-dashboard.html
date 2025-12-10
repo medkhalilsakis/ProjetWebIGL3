@@ -1,0 +1,400 @@
+<header class="main-header">
+  <div class="container">
+    <div class="logo-section" (click)="goHome()">
+      <mat-icon class="logo-icon">local_shipping</mat-icon>
+      <span class="logo-text">Livra<span class="logo-highlight">Xpress</span></span>
+    </div>
+
+    <nav class="main-nav">
+      <a routerLink="/" class="nav-item">Accueil</a>
+      <a routerLink="/produits" class="nav-item">Produits</a>
+      <a routerLink="/cities" class="nav-item">Villes</a>
+      <a routerLink="/contact" class="nav-item">Contact</a>
+    </nav>
+
+    <div class="auth-buttons">
+      <button mat-stroked-button class="signin-btn" (click)="goHome()">Retour</button>
+      <button mat-raised-button class="signup-btn" (click)="logout()">Déconnexion</button>
+    </div>
+  </div>
+</header>
+<div class="dashboard">
+  <header class="dashboard-header">
+    <div class="header-left">
+      <h1>Tableau de bord fournisseur</h1>
+      <p class="subtitle">Suivi commandes, catalogue, promotions et performance</p>
+      <p class="subtitle" *ngIf="currentUser">Bienvenue, {{ currentUser.nom_complet || currentUser.email }}</p>
+    </div>
+    <div class="header-actions">
+      <div class="avatar" *ngIf="resolveImage(currentUser?.photo_profil) as avatarSrc">
+        <img [src]="avatarSrc" alt="avatar" />
+      </div>
+      <span class="badge badge-pill">Notifications: {{ unreadNotifications }}</span>
+      <button class="btn ghost" (click)="loadAll()">Actualiser</button>
+      <button class="btn danger" (click)="logout()">Déconnexion</button>
+    </div>
+  </header>
+
+  <section class="stats-grid">
+    <div class="card stat">
+      <p class="label">Commandes aujourd'hui</p>
+      <h3>{{ stats.ordersToday }}</h3>
+      <small>Total commandes: {{ stats.totalOrders }}</small>
+    </div>
+    <div class="card stat">
+      <p class="label">Revenus semaine</p>
+      <h3>{{ formatCurrency(stats.revenueWeek) }}</h3>
+      <small>Aujourd'hui: {{ formatCurrency(stats.revenueToday) }}</small>
+    </div>
+    <div class="card stat">
+      <p class="label">Note moyenne</p>
+      <h3>{{ stats.rating | number: '1.1-2' }}/5</h3>
+      <small>Préparation moyenne: {{ stats.avgPrepTime }} min</small>
+    </div>
+    <div class="card stat">
+      <p class="label">Produits actifs</p>
+      <h3>{{ statsSummary.totalProducts || produits.length }}</h3>
+      <small>Revenus totaux: {{ formatCurrency(statsSummary.totalRevenue || 0) }}</small>
+    </div>
+  </section>
+
+  <nav class="tab-nav">
+    <button [class.active]="activeTab === 'commandes'" (click)="switchTab('commandes')">Commandes</button>
+    <button [class.active]="activeTab === 'produits'" (click)="switchTab('produits')">Produits</button>
+    <button [class.active]="activeTab === 'promotions'" (click)="switchTab('promotions')">Promotions</button>
+    <button [class.active]="activeTab === 'statistiques'" (click)="switchTab('statistiques')">Statistiques</button>
+    <button [class.active]="activeTab === 'profil'" (click)="switchTab('profil')">Profil</button>
+    <button [class.active]="activeTab === 'support'" (click)="switchTab('support')">Support</button>
+    <button [class.active]="activeTab === 'avis'" (click)="switchTab('avis')">Avis</button>
+    <button [class.active]="activeTab === 'avances'" (click)="switchTab('avances')">Avancées</button>
+  </nav>
+
+  <!-- Commandes -->
+  <section *ngIf="activeTab === 'commandes'" class="panel">
+    <div class="panel-header">
+      <div class="filters">
+        <button [class.active]="filtreStatut === 'en_cours'" (click)="loadCommandes('en_cours')">En cours</button>
+        <button [class.active]="filtreStatut === 'livrees'" (click)="loadCommandes('livrees')">Livrées</button>
+        <button [class.active]="filtreStatut === 'annulees'" (click)="loadCommandes('annulees')">Annulées</button>
+        <button [class.active]="filtreStatut === 'toutes'" (click)="loadCommandes('toutes')">Toutes</button>
+      </div>
+      <span *ngIf="commandesLoading">Chargement...</span>
+    </div>
+
+    <div class="table">
+      <div class="table-head">
+        <span>Commande</span>
+        <span>Client</span>
+        <span>Montant</span>
+        <span>Statut</span>
+        <span>Date</span>
+        <span></span>
+      </div>
+      <div class="table-row" *ngFor="let c of commandesFiltrees" (click)="ouvrirCommande(c)">
+        <span>#{{ c.id | slice:0:8 }}</span>
+        <span>{{ c.client_nom || 'Client' }}</span>
+        <span>{{ formatCurrency(c.montant_total || 0) }}</span>
+        <span><span [class]="getStatutBadge(c.statut)">{{ c.statut }}</span></span>
+        <span>{{ c.date_commande | date:'short' }}</span>
+        <span class="actions">
+          <button class="ghost" (click)="mettreAJourStatut(c, 'en_preparation'); $event.stopPropagation()">Préparation</button>
+          <button class="ghost" (click)="mettreAJourStatut(c, 'pret_pour_livraison'); $event.stopPropagation()">Prête</button>
+          <button class="ghost" (click)="mettreAJourStatut(c, 'livree'); $event.stopPropagation()">Livrée</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="side-panel" *ngIf="commandeSelectionnee as cmd">
+      <h3>Détails commande #{{ cmd.id | slice:0:10 }}</h3>
+      <p><strong>Client :</strong> {{ cmd.client_nom || 'N/A' }}</p>
+      <p><strong>Adresse :</strong> {{ cmd.rue || '—' }}, {{ cmd.ville || '' }}</p>
+      <p><strong>Montant :</strong> {{ formatCurrency(cmd.montant_total || 0) }}</p>
+      <p><strong>Paiement :</strong> {{ cmd.mode_paiement || 'n/c' }}</p>
+      <p><strong>Instructions :</strong> {{ cmd.instructions_speciales || '—' }}</p>
+      <div class="chips">
+        <span class="chip" *ngFor="let p of cmd.produits || []">
+          {{ p.nom }} ×{{ p.quantite }} ({{ formatCurrency(p.prixUnitaire || 0) }})
+        </span>
+      </div>
+      <div class="actions">
+        <button (click)="mettreAJourStatut(cmd, 'en_preparation')">En préparation</button>
+        <button (click)="mettreAJourStatut(cmd, 'pret_pour_livraison')">Prête</button>
+        <button class="success" (click)="mettreAJourStatut(cmd, 'livree')">Marquer livrée</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Produits -->
+  <section *ngIf="activeTab === 'produits'" class="panel two-col">
+    <div>
+      <h3>{{ produitEdition ? 'Modifier un produit' : 'Ajouter un produit' }}</h3>
+      <form [formGroup]="produitForm" (ngSubmit)="produitEdition ? enregistrerEdition() : enregistrerProduit()">
+        <label>Nom*<input formControlName="nom" placeholder="Pizza 4 fromages" /></label>
+        <label>Description<textarea formControlName="description" rows="3"></textarea></label>
+        <div class="grid-2">
+          <label>Prix*<input type="number" step="0.1" formControlName="prix" /></label>
+          <label>Quantité*<input type="number" formControlName="quantite" /></label>
+        </div>
+        <div class="grid-2">
+          <label>Catégorie*
+            <select formControlName="categorie_id">
+              <option value="" disabled>Choisir</option>
+              <option *ngFor="let c of categories" [value]="c.id">{{ c.name }}</option>
+            </select>
+          </label>
+          <label>Promo (%)<input type="number" formControlName="promotionPercent" /></label>
+        </div>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="disponible" /> Disponible
+        </label>
+
+        <div class="grid-2">
+          <label>Image principale*<input type="file" (change)="onMainImageSelected($event)" [required]="!produitEdition" /></label>
+          <label>Images optionnelles<input type="file" multiple (change)="onAdditionalImagesSelected($event)" /></label>
+        </div>
+
+        <div class="actions">
+          <button type="submit">{{ produitEdition ? 'Mettre à jour' : 'Ajouter' }}</button>
+          <button type="button" class="ghost" (click)="resetProduitForm(); produitEdition = null">Réinitialiser</button>
+        </div>
+      </form>
+    </div>
+
+    <div>
+      <div class="panel-header">
+        <h3>Produits ({{ produits.length }})</h3>
+        <span *ngIf="produitsLoading">Chargement...</span>
+      </div>
+      <div class="product-list-scrollable">
+        <div class="product-list">
+          <div class="product-card" *ngFor="let p of produitsPagines">
+            <div class="product-main">
+              <div class="product-image" *ngIf="resolveImage(p.image) as imgSrc">
+                <img [src]="imgSrc" alt="image {{ p.nom }}" />
+              </div>
+              <div class="product-info">
+                <h4>{{ p.nom }}</h4>
+                <p class="muted">{{ p.description || '—' }}</p>
+                <p>{{ formatCurrency(p.prix) }} • Stock: {{ p.quantite }}</p>
+                <span class="chip" [class.out]="p.status === 'out_of_stock'">{{ p.status || 'active' }}</span>
+                <div *ngIf="p.images_additionnelles?.length">
+                  <button class="ghost tiny" (click)="toggleImages(p)">
+                    {{ p._showImages ? 'Masquer' : 'Voir' }} autres images ({{ p.images_additionnelles?.length || 0 }})
+                  </button>
+                  <div class="gallery" *ngIf="p._showImages">
+                    <img *ngFor="let img of p.images_additionnelles" [src]="resolveImage(img)" alt="image additionnelle" />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="ghost" (click)="modifierProduit(p)">Modifier</button>
+              <button class="ghost" (click)="basculerDisponibilite(p)">{{ p.status === 'out_of_stock' ? 'Activer' : 'Désactiver' }}</button>
+              <button class="danger ghost" (click)="supprimerProduit(p)">Supprimer</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pagination-controls" *ngIf="produits.length > itemsPerPage">
+        <button class="ghost" (click)="previousPage()" [disabled]="currentPage === 1">← Précédent</button>
+        <span class="page-info">Page {{ currentPage }} / {{ totalPages }}</span>
+        <button class="ghost" (click)="nextPage()" [disabled]="currentPage === totalPages">Suivant →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Promotions -->
+  <section *ngIf="activeTab === 'promotions'" class="panel two-col">
+    <div>
+      <h3>Créer une promotion / réduction</h3>
+      <form [formGroup]="promotionForm" (ngSubmit)="ajouterPromotion()">
+        <div class="grid-2">
+          <label>Code*<input formControlName="code" placeholder="PIZZA10" /></label>
+          <label>Réduction (%)<input type="number" formControlName="reduction" /></label>
+        </div>
+        <label>Description<textarea formControlName="description" rows="3"></textarea></label>
+        <div class="grid-2">
+          <label>Type
+            <select formControlName="type">
+              <option value="coupon">Coupon</option>
+              <option value="happy_hour">Happy hour</option>
+              <option value="special">Offre spéciale</option>
+            </select>
+          </label>
+          <label>Produit concerné
+            <select formControlName="produitId">
+              <option [ngValue]="null">Tous</option>
+              <option *ngFor="let p of produits" [value]="p.id">{{ p.nom }}</option>
+            </select>
+          </label>
+        </div>
+        <div class="grid-2">
+          <label>Début<input type="datetime-local" formControlName="debut" /></label>
+          <label>Fin<input type="datetime-local" formControlName="fin" /></label>
+        </div>
+        <button type="submit">Enregistrer</button>
+      </form>
+    </div>
+
+    <div>
+      <h3>Promotions actives</h3>
+      <div class="table">
+        <div class="table-head">
+          <span>Code</span>
+          <span>Type</span>
+          <span>Réduction</span>
+          <span>Produit</span>
+          <span>Statut</span>
+          <span></span>
+        </div>
+        <div class="table-row" *ngFor="let promo of promotions">
+          <span>{{ promo.code }}</span>
+          <span>{{ promo.type }}</span>
+          <span>-{{ promo.reduction }}%</span>
+          <span>{{ promo.produitId ? ('#' + (promo.produitId | slice:0:6)) : 'Tous' }}</span>
+          <span><span class="chip" [class.out]="!promo.active">{{ promo.active ? 'Active' : 'Suspendue' }}</span></span>
+          <span class="actions">
+            <button class="ghost" (click)="basculerPromotion(promo)">{{ promo.active ? 'Suspendre' : 'Activer' }}</button>
+            <button class="danger ghost" (click)="supprimerPromotion(promo)">Supprimer</button>
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Statistiques -->
+  <section *ngIf="activeTab === 'statistiques'" class="panel">
+    <div class="panel-header">
+      <h3>Statistiques détaillées</h3>
+      <span *ngIf="statsLoading">Chargement...</span>
+    </div>
+    <div class="stats-grid">
+      <div class="card">
+        <p class="label">Commandes mois</p>
+        <h3>{{ stats.ordersMonth }}</h3>
+        <small>Semaine: {{ stats.ordersWeek }} | Jour: {{ stats.ordersToday }}</small>
+      </div>
+      <div class="card">
+        <p class="label">Revenus mois</p>
+        <h3>{{ formatCurrency(stats.revenueMonth) }}</h3>
+        <small>Semaine: {{ formatCurrency(stats.revenueWeek) }}</small>
+      </div>
+      <div class="card">
+        <p class="label">Performance service</p>
+        <h3>{{ stats.rating | number:'1.1-2' }}/5</h3>
+        <small>Temps prep: {{ stats.avgPrepTime }} min</small>
+      </div>
+    </div>
+    <div class="charts">
+      <div class="chart-card">
+        <h4>Commandes (Jour/Semaine/Mois)</h4>
+        <div class="bar" *ngFor="let o of charts.orders">
+          <span class="bar-label">{{ o.label }}</span>
+          <div class="bar-track">
+            <div class="bar-fill" [style.width]="chartBarWidth(o.value, charts.orders[2]?.value || 1)"></div>
+          </div>
+          <span class="bar-value">{{ o.value }}</span>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h4>Revenus (Jour/Semaine/Mois)</h4>
+        <div class="bar" *ngFor="let r of charts.revenue">
+          <span class="bar-label">{{ r.label }}</span>
+          <div class="bar-track">
+            <div class="bar-fill revenue" [style.width]="chartBarWidth(r.value, charts.revenue[2]?.value || 1)"></div>
+          </div>
+          <span class="bar-value">{{ formatCurrency(r.value) }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Profil -->
+  <section *ngIf="activeTab === 'profil'" class="panel">
+    <h3>Profil et infos établissement</h3>
+    <div class="profile-row">
+      <div>
+        <p class="label">Image de profil</p>
+        <div class="avatar large" *ngIf="resolveImage(currentUser?.photo_profil) as avatarSrc">
+          <img [src]="avatarSrc" alt="avatar" />
+        </div>
+        <input type="file" (change)="onProfileFileSelected($event)" />
+        <button class="btn" (click)="uploadProfile()" [disabled]="profileUploading">Mettre à jour</button>
+      </div>
+      <div class="profile-meta">
+        <p><strong>Nom :</strong> {{ currentUser?.nom_complet || '—' }}</p>
+        <p><strong>Email :</strong> {{ currentUser?.email || '—' }}</p>
+      </div>
+    </div>
+    <div class="grid-2">
+      <label>Nom de l'établissement<input [(ngModel)]="businessInfo.nom" placeholder="LivraXpress Corner" /></label>
+      <label>Adresse<input [(ngModel)]="businessInfo.adresse" placeholder="12 rue Exemple" /></label>
+      <label>Horaires<textarea [(ngModel)]="businessInfo.horaires" rows="2" placeholder="Lun-Dim 10h-23h"></textarea></label>
+      <label>Infos bancaires<textarea [(ngModel)]="businessInfo.informationsBancaires" rows="2" placeholder="IBAN / RIB"></textarea></label>
+      <label>Disponibilité
+        <select [(ngModel)]="businessInfo.disponibilite">
+          <option value="ouvert">Ouvert</option>
+          <option value="ferme">Fermé</option>
+        </select>
+      </label>
+    </div>
+    <div class="actions">
+      <button (click)="sauvegarderProfil()">Sauvegarder</button>
+    </div>
+  </section>
+
+  <!-- Support -->
+  <section *ngIf="activeTab === 'support'" class="panel two-col">
+    <div>
+      <h3>Contacter le support plateforme</h3>
+      <textarea [(ngModel)]="supportMessage" rows="5" placeholder="Décrivez votre problème (paiement, livraison, ... )"></textarea>
+      <div class="actions">
+        <button (click)="envoyerSupport()">Envoyer</button>
+      </div>
+    </div>
+    <div>
+      <h3>Messagerie clients</h3>
+      <div class="chat-box">
+        <div *ngFor="let msg of chatMessages" [class.me]="msg.from === 'fournisseur'">
+          <small>{{ msg.at | date:'shortTime' }}</small>
+          <p>{{ msg.message }}</p>
+        </div>
+      </div>
+      <div class="chat-input">
+        <input [(ngModel)]="chatDraft" placeholder="Répondre au client..." />
+        <button (click)="envoyerChat()">Envoyer</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Avis -->
+  <section *ngIf="activeTab === 'avis'" class="panel">
+    <div class="panel-header">
+      <h3>Avis et évaluations</h3>
+      <span *ngIf="avisLoading">Chargement...</span>
+    </div>
+    <div class="review-list">
+      <div class="review-card" *ngFor="let a of avis">
+        <div class="review-head">
+          <strong>{{ a.author }}</strong>
+          <span class="chip">Note {{ a.rating }}/5</span>
+          <small>{{ a.date | date:'short' }}</small>
+        </div>
+        <p>{{ a.comment || '—' }}</p>
+        <button class="ghost" (click)="repondreAvis(a)">Répondre</button>
+      </div>
+      <p *ngIf="!avis.length && !avisLoading" class="muted">Aucun avis pour le moment.</p>
+    </div>
+  </section>
+
+  <!-- Avancées -->
+  <section *ngIf="activeTab === 'avances'" class="panel">
+    <h3>Fonctionnalités avancées</h3>
+    <ul>
+      <li>Gestion des stocks : les quantités sont synchronisées depuis le champ stock/quantité des produits.</li>
+      <li>Images obligatoires : le formulaire d'ajout impose une image principale, les autres sont optionnelles.</li>
+      <li>Notifications temps réel : via le service de notifications existant (polling).</li>
+      <li>Options/variantes : champs à enrichir côté backend (stockés en mémoire côté UI pour l'instant).</li>
+    </ul>
+  </section>
+</div>

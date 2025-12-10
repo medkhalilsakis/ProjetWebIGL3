@@ -1,0 +1,176 @@
+<div class="add-admin-container">
+  <div class="add-admin-card">
+    <!-- Header -->
+    <div class="card-header">
+      <div class="header-content">
+        <div class="header-icon">
+          <i class="fa-solid fa-shield-alt" aria-hidden="true"></i>
+        </div>
+        <div>
+          <h1>Ajouter un Administrateur</h1>
+          <p class="subtitle">Créer un nouveau compte administrateur pour la plateforme</p>
+        </div>
+      </div>
+      <button class="btn-close" (click)="cancel()" aria-label="Fermer">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
+    </div>
+
+    <!-- Form -->
+    <form [formGroup]="adminForm" (ngSubmit)="onSubmit()" class="admin-form">
+      <!-- Nom complet -->
+      <div class="form-group">
+        <label for="nom_complet">
+          <i class="fa-solid fa-user" aria-hidden="true"></i>
+          Nom complet <span class="required">*</span>
+        </label>
+        <input
+          type="text"
+          id="nom_complet"
+          formControlName="nom_complet"
+          class="form-control"
+          [class.is-invalid]="submitted && f['nom_complet'].errors"
+          placeholder="Jean Dupont"
+          autocomplete="name"
+        >
+        <div *ngIf="submitted && f['nom_complet'].errors" class="invalid-feedback">
+          <span *ngIf="f['nom_complet'].errors['required']">Le nom complet est requis</span>
+          <span *ngIf="f['nom_complet'].errors['minlength']">Minimum 3 caractères</span>
+        </div>
+      </div>
+
+      <!-- Email -->
+      <div class="form-group">
+        <label for="email">
+          <i class="fa-solid fa-envelope" aria-hidden="true"></i>
+          Email <span class="required">*</span>
+        </label>
+        <input
+          type="email"
+          id="email"
+          formControlName="email"
+          class="form-control"
+          [class.is-invalid]="submitted && f['email'].errors"
+          placeholder="admin@livraxpress.com"
+          autocomplete="email"
+        >
+        <div *ngIf="submitted && f['email'].errors" class="invalid-feedback">
+          <span *ngIf="f['email'].errors['required']">L'email est requis</span>
+          <span *ngIf="f['email'].errors['email']">Email invalide</span>
+        </div>
+      </div>
+
+      <!-- Téléphone -->
+      <div class="form-group">
+        <label for="telephone">
+          <i class="fa-solid fa-phone" aria-hidden="true"></i>
+          Téléphone
+        </label>
+        <input
+          type="tel"
+          id="telephone"
+          formControlName="telephone"
+          class="form-control"
+          [class.is-invalid]="submitted && f['telephone'].errors"
+          placeholder="0612345678"
+          autocomplete="tel"
+        >
+        <div *ngIf="submitted && f['telephone'].errors" class="invalid-feedback">
+          <span *ngIf="f['telephone'].errors['pattern']">Format: 10 chiffres</span>
+        </div>
+        <small class="form-hint">Optionnel</small>
+      </div>
+
+      <!-- Mot de passe -->
+      <div class="form-group">
+        <label for="mot_de_passe">
+          <i class="fa-solid fa-lock" aria-hidden="true"></i>
+          Mot de passe <span class="required">*</span>
+        </label>
+        <div class="password-input-wrapper">
+          <input
+            [type]="showPassword ? 'text' : 'password'"
+            id="mot_de_passe"
+            formControlName="mot_de_passe"
+            class="form-control"
+            [class.is-invalid]="submitted && f['mot_de_passe'].errors"
+            placeholder="••••••••"
+            autocomplete="new-password"
+          >
+          <button
+            type="button"
+            class="password-toggle"
+            (click)="togglePasswordVisibility()"
+            [attr.aria-pressed]="showPassword"
+            aria-label="Afficher / masquer le mot de passe"
+          >
+            <i [class]="showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div *ngIf="submitted && f['mot_de_passe'].errors" class="invalid-feedback">
+          <span *ngIf="f['mot_de_passe'].errors['required']">Le mot de passe est requis</span>
+          <span *ngIf="f['mot_de_passe'].errors['minlength']">Minimum 8 caractères</span>
+        </div>
+        <small class="form-hint">Minimum 8 caractères</small>
+      </div>
+
+      <!-- Confirmation mot de passe -->
+      <div class="form-group">
+        <label for="confirm_password">
+          <i class="fa-solid fa-lock" aria-hidden="true"></i>
+          Confirmer le mot de passe <span class="required">*</span>
+        </label>
+        <div class="password-input-wrapper">
+          <input
+            [type]="showConfirmPassword ? 'text' : 'password'"
+            id="confirm_password"
+            formControlName="confirm_password"
+            class="form-control"
+            [class.is-invalid]="submitted && f['confirm_password'].errors"
+            placeholder="••••••••"
+            autocomplete="new-password"
+          >
+          <button
+            type="button"
+            class="password-toggle"
+            (click)="toggleConfirmPasswordVisibility()"
+            [attr.aria-pressed]="showConfirmPassword"
+            aria-label="Afficher / masquer la confirmation du mot de passe"
+          >
+            <i [class]="showConfirmPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div *ngIf="submitted && f['confirm_password'].errors" class="invalid-feedback">
+          <span *ngIf="f['confirm_password'].errors['required']">La confirmation est requise</span>
+          <span *ngIf="f['confirm_password'].errors['mismatch']">Les mots de passe ne correspondent pas</span>
+        </div>
+      </div>
+
+      <!-- Info Box -->
+      <div class="info-box">
+        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+        <div>
+          <strong>Information importante</strong>
+          <p>L'administrateur créé aura accès à toutes les fonctionnalités de gestion de la plateforme. Assurez-vous de créer un compte sécurisé avec un mot de passe fort.</p>
+        </div>
+      </div>
+
+      <!-- Form Actions -->
+      <div class="form-actions">
+        <button type="button" class="btn btn-outline" (click)="cancel()" [disabled]="loading">
+          Annuler
+        </button>
+        <button type="submit" class="btn btn-primary" [disabled]="loading">
+          <span *ngIf="!loading">
+            <i class="fa-solid fa-check" aria-hidden="true"></i>
+            Créer l'administrateur
+          </span>
+          <span *ngIf="loading">
+            <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+            Création en cours...
+          </span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

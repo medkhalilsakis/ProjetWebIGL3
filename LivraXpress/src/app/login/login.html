@@ -1,0 +1,122 @@
+<div class="auth-container">
+  <div class="auth-background">
+    <div class="auth-shape shape-1"></div>
+    <div class="auth-shape shape-2"></div>
+  </div>
+
+  <div class="auth-card">
+    <div class="auth-logo">
+      <img src="https://i.imgur.com/mubjppF.png" alt="LivraXpress">
+      <h1>LivraXpress</h1>
+    </div>
+
+    <div class="auth-header">
+      <h2>Bienvenue !</h2>
+      <p>Connectez-vous à votre compte</p>
+    </div>
+
+    <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="auth-form" novalidate>
+      <div class="form-group">
+        <label for="email">
+          <i class="icon-mail" aria-hidden="true"></i>
+          Email
+        </label>
+        <input
+          type="email"
+          id="email"
+          formControlName="email"
+          class="form-control"
+          [class.is-invalid]="submitted && f['email'].errors"
+          placeholder="votre@email.com"
+          aria-label="Email"
+        >
+        <div *ngIf="submitted && f['email'].errors" class="invalid-feedback" role="alert">
+          <span *ngIf="f['email'].errors['required']">L'email est requis</span>
+          <span *ngIf="f['email'].errors['email']">Email invalide</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="mot_de_passe">
+          <i class="icon-lock" aria-hidden="true"></i>
+          Mot de passe
+        </label>
+        <div class="password-input-wrapper">
+          <input
+            [type]="showPassword ? 'text' : 'password'"
+            id="mot_de_passe"
+            formControlName="mot_de_passe"
+            class="form-control"
+            [class.is-invalid]="submitted && f['mot_de_passe'].errors"
+            placeholder="••••••••"
+            aria-label="Mot de passe"
+          >
+          <button
+            type="button"
+            class="password-toggle"
+            (click)="togglePasswordVisibility()"
+            [attr.aria-pressed]="showPassword"
+            aria-label="Afficher / masquer le mot de passe"
+          >
+            <i [class]="showPassword ? 'icon-eye-off' : 'icon-eye'"></i>
+          </button>
+        </div>
+        <div *ngIf="submitted && f['mot_de_passe'].errors" class="invalid-feedback" role="alert">
+          <span *ngIf="f['mot_de_passe'].errors['required']">
+            Le mot de passe est requis
+          </span>
+          <span *ngIf="f['mot_de_passe'].errors['minlength']">
+            Minimum 6 caractères
+          </span>
+        </div>
+      </div>
+
+      <!-- Permit Not Verified Warning -->
+      <div *ngIf="permitNotVerified" class="alert alert-warning" role="alert">
+        <div class="alert-icon">
+          <i class="icon-alert-circle"></i>
+        </div>
+        <div class="alert-content">
+          <strong>Permis non vérifié</strong>
+          <p>{{ permitMessage }}</p>
+          <p class="alert-details">
+            Veuillez compléter votre profil livreur avec vos documents (permis de conduire, assurance, etc.) et attendre la validation de l'administration avant de pouvoir accéder au dashboard.
+          </p>
+        </div>
+      </div>
+
+      <div class="form-options">
+        <label class="checkbox-label">
+          <input type="checkbox" formControlName="rememberMe" aria-label="Se souvenir de moi">
+          <span>Se souvenir de moi</span>
+        </label>
+        <a routerLink="/forgot-password" class="forgot-link">
+          Mot de passe oublié ?
+        </a>
+      </div>
+
+      <button
+        type="submit"
+        class="btn btn-primary btn-block"
+        [disabled]="loading"
+      >
+        <span *ngIf="!loading">Se connecter</span>
+        <span *ngIf="loading">
+          <i class="spinner" aria-hidden="true"></i> Connexion...
+        </span>
+      </button>
+
+      <div class="auth-divider">
+        <span>OU</span>
+      </div>
+
+      <div class="auth-footer">
+        <p>Pas encore de compte ?</p>
+        <a routerLink="/register" class="register-link">
+          Créer un compte <i class="icon-arrow-right" aria-hidden="true"></i>
+        </a>
+      </div>
+    </form>
+  </div>
+
+</div>

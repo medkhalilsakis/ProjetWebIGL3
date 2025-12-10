@@ -1,0 +1,435 @@
+<!-- frontend/src/app/features/auth/register/register.component.html -->
+<div class="register-container">
+  <div class="register-background">
+    <div class="register-shape shape-1"></div>
+    <div class="register-shape shape-2"></div>
+    <div class="register-shape shape-3"></div>
+  </div>
+
+  <div class="register-card">
+    <!-- Logo & Header -->
+    <div class="register-logo">
+      <img src="https://i.imgur.com/mubjppF.png" alt="LivraXpress">
+      <h1>LivraXpress</h1>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="progress-tracker">
+      <div class="progress-step" [class.active]="currentStep >= 1" [class.completed]="currentStep > 1">
+        <div class="step-number">1</div>
+        <div class="step-label">Rôle</div>
+      </div>
+      <div class="progress-line" [class.active]="currentStep > 1"></div>
+      <div class="progress-step" [class.active]="currentStep >= 2" [class.completed]="currentStep > 2">
+        <div class="step-number">2</div>
+        <div class="step-label">Informations</div>
+      </div>
+      <div class="progress-line" [class.active]="currentStep > 2"></div>
+      <div class="progress-step" [class.active]="currentStep >= 3">
+        <div class="step-number">3</div>
+        <div class="step-label">Détails</div>
+      </div>
+    </div>
+
+    <form [formGroup]="registerForm" (ngSubmit)="onSubmit()">
+      
+      <!-- ÉTAPE 1: Sélection du Rôle -->
+      <div class="step-content" *ngIf="currentStep === 1">
+        <div class="step-header">
+          <h2>Choisissez votre rôle</h2>
+          <p>Sélectionnez le type de compte que vous souhaitez créer</p>
+        </div>
+
+        <div class="role-selection">
+          <div 
+            *ngFor="let role of roles"
+            class="role-card"
+            [class.selected]="selectedRole === role.value"
+            (click)="selectRole(role.value)"
+          >
+            <div class="role-icon">{{ role.icon }}</div>
+            <h3>{{ role.label }}</h3>
+            <p>{{ role.description }}</p>
+            <div class="role-check">
+              <i class="icon-check"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ÉTAPE 2: Informations de Base -->
+      <div class="step-content" *ngIf="currentStep === 2">
+        <div class="step-header">
+          <h2>Informations personnelles</h2>
+          <p>Remplissez vos informations de base</p>
+        </div>
+
+        <div class="form-grid">
+          <!-- Nom complet -->
+          <div class="form-group full-width">
+            <label for="nom_complet">
+              <i class="icon-user"></i>
+              Nom complet
+            </label>
+            <input
+              type="text"
+              id="nom_complet"
+              formControlName="nom_complet"
+              class="form-control"
+              [class.is-invalid]="submitted && f['nom_complet'].errors"
+              placeholder="Jean Dupont"
+            >
+            <div *ngIf="submitted && f['nom_complet'].errors" class="invalid-feedback">
+              <span *ngIf="f['nom_complet'].errors['required']">Le nom est requis</span>
+              <span *ngIf="f['nom_complet'].errors['minlength']">Minimum 3 caractères</span>
+            </div>
+          </div>
+
+          <!-- Email -->
+          <div class="form-group full-width">
+            <label for="email">
+              <i class="icon-mail"></i>
+              Email
+            </label>
+            <input
+              type="email"
+              id="email"
+              formControlName="email"
+              class="form-control"
+              [class.is-invalid]="submitted && f['email'].errors"
+              placeholder="votre@email.com"
+            >
+            <div *ngIf="submitted && f['email'].errors" class="invalid-feedback">
+              <span *ngIf="f['email'].errors['required']">L'email est requis</span>
+              <span *ngIf="f['email'].errors['email']">Email invalide</span>
+            </div>
+          </div>
+
+          <!-- Téléphone -->
+          <div class="form-group full-width">
+            <label for="telephone">
+              <i class="icon-phone"></i>
+              Téléphone
+            </label>
+            <input
+              type="tel"
+              id="telephone"
+              formControlName="telephone"
+              class="form-control"
+              [class.is-invalid]="submitted && f['telephone'].errors"
+              placeholder="0612345678"
+            >
+            <div *ngIf="submitted && f['telephone'].errors" class="invalid-feedback">
+              <span *ngIf="f['telephone'].errors['required']">Le téléphone est requis</span>
+              <span *ngIf="f['telephone'].errors['pattern']">Format: 10 chiffres</span>
+            </div>
+          </div>
+
+          <!-- Mot de passe -->
+          <div class="form-group">
+            <label for="mot_de_passe">
+              <i class="icon-lock"></i>
+              Mot de passe
+            </label>
+            <div class="password-input-wrapper">
+              <input
+                [type]="showPassword ? 'text' : 'password'"
+                id="mot_de_passe"
+                formControlName="mot_de_passe"
+                class="form-control"
+                [class.is-invalid]="submitted && f['mot_de_passe'].errors"
+                placeholder="••••••••"
+              >
+              <button
+                type="button"
+                class="password-toggle"
+                (click)="togglePasswordVisibility()"
+              >
+                <i [class]="showPassword ? 'icon-eye-off' : 'icon-eye'"></i>
+              </button>
+            </div>
+            <div *ngIf="submitted && f['mot_de_passe'].errors" class="invalid-feedback">
+              <span *ngIf="f['mot_de_passe'].errors['required']">Le mot de passe est requis</span>
+              <span *ngIf="f['mot_de_passe'].errors['minlength']">Minimum 6 caractères</span>
+            </div>
+          </div>
+
+          <!-- Confirmation mot de passe -->
+          <div class="form-group">
+            <label for="confirm_password">
+              <i class="icon-lock"></i>
+              Confirmer le mot de passe
+            </label>
+            <input
+              type="password"
+              id="confirm_password"
+              formControlName="confirm_password"
+              class="form-control"
+              [class.is-invalid]="submitted && f['confirm_password'].errors"
+              placeholder="••••••••"
+            >
+            <div *ngIf="submitted && f['confirm_password'].errors" class="invalid-feedback">
+              <span *ngIf="f['confirm_password'].errors['required']">Confirmation requise</span>
+              <span *ngIf="f['confirm_password'].errors['mismatch']">Les mots de passe ne correspondent pas</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button type="button" class="btn btn-outline" (click)="prevStep()">
+            <i class="icon-arrow-left"></i>
+            Retour
+          </button>
+          <button type="button" class="btn btn-primary" (click)="nextStep()">
+            Suivant
+            <i class="icon-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- ÉTAPE 3: Informations Spécifiques -->
+      <div class="step-content" *ngIf="currentStep === 3">
+        <div class="step-header">
+          <h2>Informations complémentaires</h2>
+          <p *ngIf="selectedRole === 'client'">Complétez votre profil client</p>
+          <p *ngIf="selectedRole === 'fournisseur'">Informations sur votre entreprise</p>
+          <p *ngIf="selectedRole === 'livreur'">Informations sur votre véhicule</p>
+        </div>
+
+        <!-- Champs spécifiques CLIENT -->
+        <div class="form-grid" *ngIf="selectedRole === 'client'">
+          <div class="info-message">
+            <i class="icon-check-circle"></i>
+            <div>
+              <h4>Presque terminé !</h4>
+              <p>Vous êtes prêt à passer votre première commande.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Champs spécifiques FOURNISSEUR -->
+        <div class="form-grid" *ngIf="selectedRole === 'fournisseur'">
+          <div class="form-group full-width">
+            <label for="nom_entreprise">
+              <i class="icon-briefcase"></i>
+              Nom de l'entreprise
+            </label>
+            <input
+              type="text"
+              id="nom_entreprise"
+              formControlName="nom_entreprise"
+              class="form-control"
+              [class.is-invalid]="submitted && f['nom_entreprise'].errors"
+              placeholder="Ma Super Entreprise"
+            >
+            <div *ngIf="submitted && f['nom_entreprise'].errors" class="invalid-feedback">
+              <span *ngIf="f['nom_entreprise'].errors['required']">Le nom d'entreprise est requis</span>
+            </div>
+          </div>
+
+          <div class="form-group full-width">
+            <label for="type_fournisseur">
+              <i class="icon-store"></i>
+              Type d'activité
+            </label>
+            <select
+              id="type_fournisseur"
+              formControlName="type_fournisseur"
+              class="form-control"
+              [class.is-invalid]="submitted && f['type_fournisseur'].errors"
+            >
+              <option value="">Sélectionnez un type</option>
+              <option *ngFor="let type of typesFournisseur" [value]="type.value">
+                {{ type.label }}
+              </option>
+            </select>
+            <div *ngIf="submitted && f['type_fournisseur'].errors" class="invalid-feedback">
+              <span *ngIf="f['type_fournisseur'].errors['required']">Le type est requis</span>
+            </div>
+          </div>
+
+          <div class="form-section-title full-width">
+            <i class="icon-map-pin"></i>
+            <span>Adresse de l'entreprise</span>
+          </div>
+
+          <div class="form-group full-width">
+            <label for="rue">Rue</label>
+            <input
+              type="text"
+              id="rue"
+              formControlName="rue"
+              class="form-control"
+              [class.is-invalid]="submitted && f['rue'].errors"
+              placeholder="123 Rue de la Paix"
+            >
+            <div *ngIf="submitted && f['rue'].errors" class="invalid-feedback">
+              <span *ngIf="f['rue'].errors['required']">L'adresse est requise</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="code_postal">Code postal</label>
+            <input
+              type="text"
+              id="code_postal"
+              formControlName="code_postal"
+              class="form-control"
+              [class.is-invalid]="submitted && f['code_postal'].errors"
+              placeholder="20000"
+            >
+            <div *ngIf="submitted && f['code_postal'].errors" class="invalid-feedback">
+              <span *ngIf="f['code_postal'].errors['required']">Le code postal est requis</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="ville">Ville</label>
+            <input
+              type="text"
+              id="ville"
+              formControlName="ville"
+              class="form-control"
+              [class.is-invalid]="submitted && f['ville'].errors"
+              placeholder="Casablanca"
+            >
+            <div *ngIf="submitted && f['ville'].errors" class="invalid-feedback">
+              <span *ngIf="f['ville'].errors['required']">La ville est requise</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Champs spécifiques LIVREUR -->
+        <div class="form-grid" *ngIf="selectedRole === 'livreur'">
+          <div class="form-group full-width">
+            <label for="type_vehicule">
+              <i class="icon-truck"></i>
+              Type de véhicule
+            </label>
+            <select
+              id="type_vehicule"
+              formControlName="type_vehicule"
+              class="form-control"
+              [class.is-invalid]="submitted && f['type_vehicule'].errors"
+            >
+              <option value="">Sélectionnez un véhicule</option>
+              <option *ngFor="let vehicule of typesVehicule" [value]="vehicule.value">
+                {{ vehicule.label }}
+              </option>
+            </select>
+            <div *ngIf="submitted && f['type_vehicule'].errors" class="invalid-feedback">
+              <span *ngIf="f['type_vehicule'].errors['required']">Le type de véhicule est requis</span>
+            </div>
+          </div>
+
+          <div class="form-group full-width">
+            <label for="numero_permis">
+              <i class="icon-credit-card"></i>
+              Numéro de permis
+            </label>
+            <input
+              type="text"
+              id="numero_permis"
+              formControlName="numero_permis"
+              class="form-control"
+              [class.is-invalid]="submitted && f['numero_permis'].errors"
+              placeholder="AB123456"
+            >
+            <div *ngIf="submitted && f['numero_permis'].errors" class="invalid-feedback">
+              <span *ngIf="f['numero_permis'].errors['required']">Le numéro de permis est requis</span>
+            </div>
+          </div>
+
+          <div class="form-group full-width">
+            <label for="permis_file">
+              <i class="icon-file"></i>
+              Copie du permis de conduire (PDF) <span class="required">*</span>
+            </label>
+            <div class="file-upload-wrapper">
+              <input
+                type="file"
+                id="permis_file"
+                accept="application/pdf"
+                (change)="onPermisFileSelected($event)"
+                class="file-input"
+                [class.is-invalid]="submitted && f['permis_file'].errors"
+              >
+              <label for="permis_file" class="file-label">
+                <i class="icon-upload"></i>
+                <span *ngIf="!permisFile">Choisir un fichier PDF</span>
+                <span *ngIf="permisFile" class="file-name">{{ permisFile.name }}</span>
+              </label>
+            </div>
+            <div *ngIf="submitted && f['permis_file'].errors" class="invalid-feedback">
+              <span *ngIf="f['permis_file'].errors['required']">Le permis de conduire (PDF) est requis</span>
+            </div>
+            <small class="form-hint">Format PDF uniquement, taille max: 5MB</small>
+          </div>
+
+          <div class="form-group full-width">
+            <label for="carte_identite_file">
+              <i class="icon-file"></i>
+              Copie de la carte d'identité (PDF) <span class="required">*</span>
+            </label>
+            <div class="file-upload-wrapper">
+              <input
+                type="file"
+                id="carte_identite_file"
+                accept="application/pdf"
+                (change)="onCarteIdentiteFileSelected($event)"
+                class="file-input"
+                [class.is-invalid]="submitted && f['carte_identite_file'].errors"
+              >
+              <label for="carte_identite_file" class="file-label">
+                <i class="icon-upload"></i>
+                <span *ngIf="!carteIdentiteFile">Choisir un fichier PDF</span>
+                <span *ngIf="carteIdentiteFile" class="file-name">{{ carteIdentiteFile.name }}</span>
+              </label>
+            </div>
+            <div *ngIf="submitted && f['carte_identite_file'].errors" class="invalid-feedback">
+              <span *ngIf="f['carte_identite_file'].errors['required']">La carte d'identité (PDF) est requise</span>
+            </div>
+            <small class="form-hint">Format PDF uniquement, taille max: 5MB</small>
+          </div>
+
+          <div class="info-message full-width">
+            <i class="icon-info"></i>
+            <div>
+              <h4>Vérification requise</h4>
+              <p>Vos documents (permis de conduire et carte d'identité) seront vérifiés avant l'activation de votre compte. Vous recevrez une notification une fois votre compte approuvé.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-actions">
+          <button type="button" class="btn btn-outline" (click)="prevStep()">
+            <i class="icon-arrow-left"></i>
+            Retour
+          </button>
+          <button
+            type="submit"
+            class="btn btn-primary"
+            [disabled]="loading"
+          >
+            <span *ngIf="!loading">
+              <i class="icon-check"></i>
+              Créer mon compte
+            </span>
+            <span *ngIf="loading">
+              <i class="spinner"></i>
+              Création en cours...
+            </span>
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <!-- Link to Login -->
+    <div class="register-footer">
+      <p>Vous avez déjà un compte ?</p>
+      <a routerLink="/login" class="login-link">
+        Se connecter <i class="icon-arrow-right"></i>
+      </a>
+    </div>
+  </div>
+</div>

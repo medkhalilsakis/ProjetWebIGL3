@@ -1,0 +1,650 @@
+<!-- Navbar (same structure as Accueil) -->
+<header class="main-header">
+  <div class="container">
+    <div class="logo-section" (click)="goHome()">
+      <mat-icon class="logo-icon">local_shipping</mat-icon>
+      <span class="logo-text">Livra<span class="logo-highlight">Xpress</span></span>
+    </div>
+
+    <nav class="main-nav">
+      <a routerLink="/" class="nav-item">Accueil</a>
+      <a routerLink="/produits" class="nav-item">Produits</a>
+      <a routerLink="/cities" class="nav-item">Villes</a>
+      <a routerLink="/contact" class="nav-item">Contact</a>
+    </nav>
+
+    <div class="auth-buttons">
+      <button mat-stroked-button class="signin-btn" (click)="goHome()">Retour</button>
+      <button mat-raised-button class="signup-btn" (click)="logout()">Déconnexion</button>
+    </div>
+  </div>
+</header>
+
+<div class="dashboard">
+  <!-- Header -->
+  <header class="dashboard-header">
+    <div class="header-left">
+      <div class="profile-section">
+        <div class="avatar-container">
+          <img [src]="resolveImage(currentUser?.photo_profil)" alt="Avatar" class="avatar" />
+          <label class="avatar-upload">
+            <input type="file" accept="image/*" (change)="onProfileImageSelected($event)" />
+            <span class="upload-icon">📷</span>
+          </label>
+        </div>
+        <div>
+          <h1>{{ currentUser?.nom_complet || 'Client' }}</h1>
+          <p class="subtitle">{{ currentUser?.email }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="badge badge-pill">Notifications: {{ unreadCount }}</span>
+      <button class="btn ghost" (click)="logout()">Déconnexion</button>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="tab-nav">
+    <button [class.active]="activeTab === 'accueil'" (click)="switchTab('accueil')">Accueil</button>
+    <button [class.active]="activeTab === 'commande_en_cours'" (click)="switchTab('commande_en_cours')">
+      Commande en cours
+      <span *ngIf="activeOrder" class="badge badge-danger">1</span>
+    </button>
+    <button [class.active]="activeTab === 'historique'" (click)="switchTab('historique')">Historique</button>
+    <button [class.active]="activeTab === 'recommandations'" (click)="switchTab('recommandations')">Recommandations</button>
+    <button [class.active]="activeTab === 'preferences'" (click)="switchTab('preferences')">Préférences</button>
+    <button [class.active]="activeTab === 'portefeuille'" (click)="switchTab('portefeuille')">Portefeuille</button>
+    <button [class.active]="activeTab === 'support'" (click)="switchTab('support')">Support</button>
+    <button [class.active]="activeTab === 'fidelite'" (click)="switchTab('fidelite')">Fidélité</button>
+    <button [class.active]="activeTab === 'notifications'" (click)="switchTab('notifications')">Notifications</button>
+    <button [class.active]="activeTab === 'parametres'" (click)="switchTab('parametres')">Paramètres</button>
+  </nav>
+
+  <!-- Accueil -->
+  <section *ngIf="activeTab === 'accueil'" class="panel">
+    <h2>Tableau de bord</h2>
+
+    <!-- Panier / Checkout -->
+    <div class="card cart-summary" *ngIf="cartCount() > 0; else emptyCart">
+      <div class="cart-summary-info">
+        <div>
+          <p class="label">Panier en attente</p>
+          <h3>{{ cartCount() }} article(s)</h3>
+          <p class="total">{{ cartTotal() | currency:'TND':'symbol' }}</p>
+        </div>
+      </div>
+
+      <div class="checkout-grid">
+        <div>
+          <p class="label">Adresse de livraison</p>
+          <select [(ngModel)]="selectedAddressId" class="checkout-select">
+            <option [ngValue]="null">Sélectionner...</option>
+            <option *ngFor="let addr of addresses" [ngValue]="addr.id">
+              {{ addr.rue }}, {{ addr.ville }} {{ addr.code_postal }}
+            </option>
+          </select>
+          <button class="ghost" (click)="showAddressForm = true">+ Ajouter une adresse</button>
+        </div>
+
+        <div>
+          <p class="label">Méthode de paiement</p>
+          <label class="radio">
+            <input type="radio" name="pay" value="carte" [(ngModel)]="paymentChoice" />
+            Carte bancaire
+          </label>
+          <label class="radio">
+            <input type="radio" name="pay" value="espece" [(ngModel)]="paymentChoice" />
+            Espèce à la livraison
+          </label>
+        </div>
+      </div>
+
+      <button class="btn" (click)="finalizeCart()" [disabled]="searchingDelivery">
+        <span *ngIf="!searchingDelivery">Finaliser ma commande</span>
+        <span *ngIf="searchingDelivery">Recherche d'un livreur...</span>
+      </button>
+
+      <div class="delivery-options" *ngIf="deliveryOptions.length > 0">
+        <p class="label">Livreurs disponibles</p>
+        <div class="delivery-card" *ngFor="let opt of deliveryOptions">
+          <div>
+            <strong>{{ opt.livreur }}</strong>
+            <p>{{ opt.etaMinutes }} min</p>
+          </div>
+          <div class="price">{{ opt.price | currency:'TND':'symbol' }}</div>
+        </div>
+      </div>
+    </div>
+    <ng-template #emptyCart>
+      <div class="card cart-summary empty">
+        <p>Votre panier est vide.</p>
+        <button class="btn ghost" (click)="goProducts()">Voir les produits</button>
+      </div>
+    </ng-template>
+
+    <!-- Active Order Card -->
+    <div *ngIf="activeOrder" class="card active-order-card">
+      <h3>Commande en cours</h3>
+      <div class="order-status">
+        <span [class]="getStatusBadge(activeOrder.statut)">{{ getStatusLabel(activeOrder.statut) }}</span>
+        <span class="eta">Livraison estimée: {{ etaMinutes }} min</span>
+      </div>
+      <p><strong>{{ activeOrder.fournisseur }}</strong></p>
+      <p>{{ formatCurrency(activeOrder.montant_total) }}</p>
+      <button (click)="switchTab('commande_en_cours')">Voir détails</button>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="stats-grid">
+      <div class="card stat">
+        <p class="label">Commandes totales</p>
+        <h3>{{ orders.length }}</h3>
+      </div>
+      <div class="card stat">
+        <p class="label">Portefeuille</p>
+        <h3>{{ formatCurrency(walletBalance) }}</h3>
+      </div>
+      <div class="card stat">
+        <p class="label">Points fidélité</p>
+        <h3>{{ loyalty.points }}</h3>
+        <small>Niveau {{ loyalty.level }}</small>
+      </div>
+    </div>
+
+    <!-- Addresses -->
+    <div class="card">
+      <h3>Adresses enregistrées</h3>
+      <div class="address-list">
+        <div *ngFor="let addr of addresses" class="address-item">
+          <div>
+            <strong>{{ addr.libelle || 'Adresse principale' }}</strong>
+            <p>{{ addr.rue }}, {{ addr.ville }} {{ addr.code_postal }}</p>
+          </div>
+          <button class="ghost danger" (click)="deleteAddress(addr.id)">Supprimer</button>
+        </div>
+      </div>
+      <button class="ghost" (click)="showAddressForm = !showAddressForm">+ Ajouter une adresse</button>
+    </div>
+
+    <!-- Payment Methods -->
+    <div class="card">
+      <h3>Moyens de paiement</h3>
+      <div class="payment-list">
+        <div *ngFor="let pm of paymentMethods" class="payment-item">
+          <span>{{ pm.type === 'carte' ? '💳' : '💰' }} {{ pm.nom || pm.type }}</span>
+          <span *ngIf="pm.numero">{{ pm.numero }}</span>
+          <span *ngIf="pm.est_par_defaut" class="badge badge-success">Par défaut</span>
+          <button class="ghost danger" (click)="deletePaymentMethod(pm.id)">Supprimer</button>
+        </div>
+      </div>
+      <button class="ghost" (click)="showPaymentForm = !showPaymentForm">+ Ajouter un moyen de paiement</button>
+    </div>
+  </section>
+
+  <!-- Commande en cours -->
+  <section *ngIf="activeTab === 'commande_en_cours' && activeOrder" class="panel">
+    <h2>Suivi de commande #{{ activeOrder.id | slice:0:8 }}</h2>
+
+    <div class="order-tracking">
+      <div class="tracking-steps">
+        <div [class.active]="activeOrder.statut === 'en_attente'" [class.completed]="['en_preparation', 'pret_pour_livraison', 'en_livraison', 'livree'].includes(activeOrder.statut)">
+          <span class="step-icon">📦</span>
+          <span>En préparation</span>
+        </div>
+        <div [class.active]="activeOrder.statut === 'pret_pour_livraison'" [class.completed]="['en_livraison', 'livree'].includes(activeOrder.statut)">
+          <span class="step-icon">🚚</span>
+          <span>En route</span>
+        </div>
+        <div [class.active]="activeOrder.statut === 'en_livraison'" [class.completed]="activeOrder.statut === 'livree'">
+          <span class="step-icon">📍</span>
+          <span>À proximité</span>
+        </div>
+        <div [class.completed]="activeOrder.statut === 'livree'">
+          <span class="step-icon">✅</span>
+          <span>Livrée</span>
+        </div>
+      </div>
+
+      <div class="order-details-grid">
+        <div class="card">
+          <h3>Détails du restaurant</h3>
+          <p><strong>{{ activeOrder.fournisseur }}</strong></p>
+          <p>Temps de préparation: ~20 min</p>
+        </div>
+
+        <div class="card">
+          <h3>Détails du livreur</h3>
+          <p *ngIf="activeOrder.livreur_nom"><strong>{{ activeOrder.livreur_nom }}</strong></p>
+          <p *ngIf="!activeOrder.livreur_nom">En attente d'assignation</p>
+          <button class="ghost">Contacter</button>
+        </div>
+
+        <div class="card">
+          <h3>Détails de la commande</h3>
+          <div *ngFor="let item of activeOrder.produits || []" class="order-item">
+            <span>{{ item.nom }} × {{ item.quantite }}</span>
+            <span>{{ formatCurrency(item.prix_unitaire * item.quantite) }}</span>
+          </div>
+          <div class="order-total">
+            <p>Sous-total: {{ formatCurrency((activeOrder.montant_total || 0) - (activeOrder.frais_service || 0) - (activeOrder.frais_livraison || 0)) }}</p>
+            <p>Frais service: {{ formatCurrency(activeOrder.frais_service || 0) }}</p>
+            <p>Frais livraison: {{ formatCurrency(activeOrder.frais_livraison || 0) }}</p>
+            <p><strong>Total: {{ formatCurrency(activeOrder.montant_total) }}</strong></p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Localisation</h3>
+          <div class="map-placeholder">
+            <p>📍 Carte de localisation</p>
+            <p *ngIf="driverLocation">Livreur: {{ driverLocation.lat | number:'1.4-4' }}, {{ driverLocation.lng | number:'1.4-4' }}</p>
+            <p>ETA: {{ etaMinutes }} minutes</p>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn danger" (click)="contactSupport()">Contacter le support</button>
+    </div>
+  </section>
+
+  <section *ngIf="activeTab === 'commande_en_cours' && !activeOrder" class="panel">
+    <p>Aucune commande en cours</p>
+    <button (click)="switchTab('recommandations')">Voir les restaurants</button>
+  </section>
+
+  <!-- Historique -->
+  <section *ngIf="activeTab === 'historique'" class="panel">
+    <div class="panel-header">
+      <h2>Historique des commandes</h2>
+      <div class="filters">
+        <button [class.active]="orderFilter === 'toutes'" (click)="orderFilter = 'toutes'; loadOrders()">Toutes</button>
+        <button [class.active]="orderFilter === 'livrees'" (click)="orderFilter = 'livrees'; loadOrders()">Livrées</button>
+        <button [class.active]="orderFilter === 'annulees'" (click)="orderFilter = 'annulees'; loadOrders()">Annulées</button>
+        <input type="date" [(ngModel)]="dateFilter" placeholder="Filtrer par date" />
+      </div>
+    </div>
+
+    <div *ngIf="ordersLoading" class="loading">Chargement...</div>
+    <div *ngIf="!ordersLoading && orders.length === 0" class="empty-state">
+      <p>Aucune commande trouvée</p>
+    </div>
+
+    <div class="orders-list">
+      <div *ngFor="let order of orders" class="order-card">
+        <div class="order-header">
+          <div>
+            <strong>Commande #{{ order.id | slice:0:8 }}</strong>
+            <p>{{ order.fournisseur }}</p>
+            <p>{{ order.date_commande | date:'short' }}</p>
+          </div>
+          <div>
+            <span [class]="getStatusBadge(order.statut)">{{ getStatusLabel(order.statut) }}</span>
+            <p class="order-total">{{ formatCurrency(order.montant_total) }}</p>
+          </div>
+        </div>
+        <div class="order-actions">
+          <button class="ghost" (click)="reorder(order)">Commander à nouveau</button>
+          <button class="ghost" (click)="downloadInvoice(order)">Télécharger facture</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Recommandations -->
+  <section *ngIf="activeTab === 'recommandations'" class="panel">
+    <h2>Recommandations personnalisées</h2>
+
+    <!-- Promotions -->
+    <div class="card">
+      <h3>Promotions du jour</h3>
+      <div class="promotions-grid">
+        <div *ngFor="let promo of promotions" class="promo-card">
+          <h4>{{ promo.titre }}</h4>
+          <p>{{ promo.description }}</p>
+          <button (click)="applyPromo(promo.code)">Utiliser {{ promo.code }}</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Themes -->
+    <div class="card">
+      <h3>Thèmes</h3>
+      <div class="themes-list">
+        <button *ngFor="let theme of themes" class="theme-btn">{{ theme }}</button>
+      </div>
+    </div>
+
+    <!-- Recommended Suppliers -->
+    <div class="card">
+      <h3>Restaurants proches</h3>
+      <div class="suppliers-grid">
+        <div *ngFor="let supplier of recommendedSuppliers" class="supplier-card">
+          <img [src]="resolveImage(supplier.photo_couverture)" alt="{{ supplier.nom_entreprise }}" />
+          <div class="supplier-info">
+            <h4>{{ supplier.nom_entreprise }}</h4>
+            <p>{{ supplier.type_fournisseur }}</p>
+            <div class="supplier-meta">
+              <span>⭐ {{ supplier.note_moyenne || 'N/A' }}</span>
+              <span>⏱️ {{ supplier.temps_preparation_moyen || 'N/A' }} min</span>
+              <span>💰 {{ formatCurrency(supplier.frais_livraison || 0) }}</span>
+            </div>
+            <button>Voir menu</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Préférences -->
+  <section *ngIf="activeTab === 'preferences'" class="panel">
+    <h2>Gestion des préférences</h2>
+
+    <form [formGroup]="preferencesForm" (ngSubmit)="savePreferences()">
+      <div class="card">
+        <h3>Allergènes / Restrictions</h3>
+        <div class="chips">
+          <span *ngFor="let allergen of allergens" 
+                [class.selected]="selectedAllergens.includes(allergen)"
+                class="chip" 
+                (click)="toggleAllergen(allergen)">
+            {{ allergen }}
+          </span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Préférences culinaires</h3>
+        <div class="chips">
+          <span *ngFor="let pref of dietaryPreferences"
+                [class.selected]="selectedDietary.includes(pref)"
+                class="chip"
+                (click)="toggleDietary(pref)">
+            {{ pref }}
+          </span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Horaires de livraison préférés</h3>
+        <label>
+          <input formControlName="horaires_preferes" placeholder="Ex: 12:00-14:00, 19:00-21:00" />
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>Notifications</h3>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="notifications_email" />
+          Email
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="notifications_sms" />
+          SMS
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="notifications_push" />
+          Push
+        </label>
+      </div>
+
+      <button type="submit">Sauvegarder</button>
+    </form>
+  </section>
+
+  <!-- Portefeuille -->
+  <section *ngIf="activeTab === 'portefeuille'" class="panel">
+    <h2>Portefeuille & Paiements</h2>
+
+    <div class="card">
+      <h3>Solde du portefeuille</h3>
+      <h1 class="wallet-balance">{{ formatCurrency(walletBalance) }}</h1>
+      <button>Recharger</button>
+    </div>
+
+    <div class="card">
+      <h3>Codes promo</h3>
+      <div class="promo-input">
+        <input [(ngModel)]="promoCode" placeholder="Entrer un code promo" />
+        <button (click)="applyPromoCode()">Appliquer</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Historique des paiements</h3>
+      <div class="payment-history">
+        <div *ngFor="let payment of paymentHistory" class="payment-item">
+          <div>
+            <strong>{{ payment.description }}</strong>
+            <p>{{ payment.date | date:'short' }}</p>
+          </div>
+          <span [class]="payment.montant > 0 ? 'positive' : 'negative'">
+            {{ payment.montant > 0 ? '+' : '' }}{{ formatCurrency(payment.montant) }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Support -->
+  <section *ngIf="activeTab === 'support'" class="panel">
+    <h2>Support & Aide</h2>
+
+    <div class="support-grid">
+      <div class="card">
+        <h3>Créer un ticket</h3>
+        <form [formGroup]="supportForm" (ngSubmit)="submitTicket()">
+          <label>
+            Sujet*
+            <input formControlName="sujet" />
+          </label>
+          <label>
+            Message*
+            <textarea formControlName="message" rows="5"></textarea>
+          </label>
+          <button type="submit">Envoyer</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Chat en direct</h3>
+        <div class="chat-box">
+          <div *ngFor="let msg of chatMessages" [class.me]="msg.from === 'client'">
+            <small>{{ msg.from === 'client' ? 'Vous' : 'Support' }} - {{ msg.at | date:'short' }}</small>
+            <p>{{ msg.message }}</p>
+          </div>
+        </div>
+        <div class="chat-input">
+          <input [(ngModel)]="chatDraft" placeholder="Tapez votre message..." />
+          <button (click)="sendChatMessage()">Envoyer</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Mes tickets</h3>
+      <div class="tickets-list">
+        <div *ngFor="let ticket of tickets" class="ticket-item">
+          <div>
+            <strong>{{ ticket.sujet }}</strong>
+            <p>{{ ticket.message }}</p>
+            <small>{{ ticket.date_creation | date:'short' }}</small>
+          </div>
+          <span [class]="'badge badge-' + (ticket.statut === 'resolu' ? 'success' : ticket.statut === 'en_cours' ? 'info' : 'warning')">
+            {{ ticket.statut }}
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Fidélité -->
+  <section *ngIf="activeTab === 'fidelite'" class="panel">
+    <h2>Programme de fidélité</h2>
+
+    <div class="card">
+      <h3>Niveau actuel: {{ loyalty.level }}</h3>
+      <div class="loyalty-progress">
+        <div class="progress-bar">
+          <div class="progress-fill" [style.width.%]="loyalty.progress"></div>
+        </div>
+        <p>{{ loyalty.points }} / {{ loyalty.pointsNeeded }} points pour {{ loyalty.nextLevel }}</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Récompenses disponibles</h3>
+      <div class="rewards-grid">
+        <div *ngFor="let reward of rewards" class="reward-card">
+          <h4>{{ reward.nom }}</h4>
+          <p>{{ reward.points }} points</p>
+          <button [disabled]="loyalty.points < reward.points" (click)="redeemReward(reward)">
+            Échanger
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Historique des points</h3>
+      <div class="points-history">
+        <div *ngFor="let entry of pointsHistory" class="points-item">
+          <div>
+            <strong>{{ entry.description }}</strong>
+            <p>{{ entry.date | date:'short' }}</p>
+          </div>
+          <span class="positive">+{{ entry.points }} points</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Notifications -->
+  <section *ngIf="activeTab === 'notifications'" class="panel">
+    <h2>Notifications & Messages</h2>
+    <div class="notifications-list">
+      <div *ngFor="let notif of notifications" class="notification-item" [class.unread]="!notif.lu">
+        <div>
+          <strong>{{ notif.titre }}</strong>
+          <p>{{ notif.message }}</p>
+          <small>{{ notif.date_creation | date:'short' }}</small>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Paramètres -->
+  <section *ngIf="activeTab === 'parametres'" class="panel">
+    <h2>Paramètres du compte</h2>
+
+    <form [formGroup]="settingsForm" (ngSubmit)="saveSettings()">
+      <div class="card">
+        <h3>Informations personnelles</h3>
+        <label>
+          Nom complet*
+          <input formControlName="nom_complet" />
+        </label>
+        <label>
+          Téléphone
+          <input formControlName="telephone" />
+        </label>
+        <label>
+          Email*
+          <input type="email" formControlName="email" [disabled]="true" />
+        </label>
+      </div>
+
+      <div class="card">
+        <h3>Sécurité</h3>
+        <label>
+          Nouveau mot de passe
+          <input type="password" formControlName="mot_de_passe" />
+        </label>
+        <label>
+          Confirmer mot de passe
+          <input type="password" formControlName="mot_de_passe_confirme" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" [(ngModel)]="twoFactorEnabled" (change)="toggle2FA()" />
+          Authentification à deux facteurs (2FA)
+        </label>
+      </div>
+
+      <button type="submit">Sauvegarder</button>
+    </form>
+  </section>
+
+  <!-- Address Form Modal -->
+  <div *ngIf="showAddressForm" class="modal">
+    <div class="modal-content">
+      <h3>Ajouter une adresse</h3>
+      <form [formGroup]="addressForm" (ngSubmit)="addAddress()">
+        <label>
+          Libellé
+          <input formControlName="libelle" placeholder="Ex: Maison, Bureau" />
+        </label>
+        <label>
+          Rue*
+          <input formControlName="rue" />
+        </label>
+        <label>
+          Ville*
+          <input formControlName="ville" />
+        </label>
+        <label>
+          Code postal*
+          <input formControlName="code_postal" />
+        </label>
+        <label>
+          Complément
+          <input formControlName="complement" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="est_principale" />
+          Adresse principale
+        </label>
+        <div class="modal-actions">
+          <button type="submit">Ajouter</button>
+          <button type="button" class="ghost" (click)="showAddressForm = false">Annuler</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Payment Form Modal -->
+  <div *ngIf="showPaymentForm" class="modal">
+    <div class="modal-content">
+      <h3>Ajouter un moyen de paiement</h3>
+      <form [formGroup]="paymentForm" (ngSubmit)="addPaymentMethod()">
+        <label>
+          Type*
+          <select formControlName="type">
+            <option value="carte">Carte bancaire</option>
+            <option value="portefeuille">Portefeuille</option>
+          </select>
+        </label>
+        <label *ngIf="paymentForm.get('type')?.value === 'carte'">
+          Numéro de carte
+          <input formControlName="numero" />
+        </label>
+        <label *ngIf="paymentForm.get('type')?.value === 'carte'">
+          Nom sur la carte
+          <input formControlName="nom" />
+        </label>
+        <label *ngIf="paymentForm.get('type')?.value === 'carte'">
+          Date d'expiration
+          <input formControlName="expiration" placeholder="MM/AA" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" formControlName="est_par_defaut" />
+          Méthode par défaut
+        </label>
+        <div class="modal-actions">
+          <button type="submit">Ajouter</button>
+          <button type="button" class="ghost" (click)="showPaymentForm = false">Annuler</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
