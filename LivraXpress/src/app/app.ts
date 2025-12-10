@@ -4,10 +4,12 @@ import { HTTP_INTERCEPTORS } from '@angular/common/http';
 import { AuthInterceptor } from './core/auth.interceptor';
 import { AuthService } from './services/authentification';
 import { interval, Subscription } from 'rxjs';
+import { FaIconLibrary, FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { fas } from '@fortawesome/free-solid-svg-icons'; // pack complet
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, FontAwesomeModule],
   templateUrl: './app.html',
   styleUrl: './app.css',
   providers: [
@@ -19,7 +21,9 @@ export class App implements OnInit, OnDestroy {
   protected readonly title = signal('LivraXpress');
   private keepAliveSub: Subscription | null = null;
 
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService, library: FaIconLibrary) {
+    library.addIconPacks(fas);
+  }
 
   ngOnInit(): void {
     // On app start we try to verify the stored session (if any)

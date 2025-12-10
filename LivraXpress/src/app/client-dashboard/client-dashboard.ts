@@ -527,7 +527,7 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
 
     const val = this.addressForm.value;
     this.http
-      .post<any>(`${this.apiUrl}/adresses`, val, this.auth.getAuthHeaders())
+      .post<any>(`${this.apiUrl}/client/adresses`, val, this.auth.getAuthHeaders())
       .subscribe({
         next: (res) => {
           if (res?.success) {

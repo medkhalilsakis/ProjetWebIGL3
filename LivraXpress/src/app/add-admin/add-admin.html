@@ -4,7 +4,7 @@
     <div class="card-header">
       <div class="header-content">
         <div class="header-icon">
-          <i class="icon-shield"></i>
+          <i class="fa-solid fa-shield-alt" aria-hidden="true"></i>
         </div>
         <div>
           <h1>Ajouter un Administrateur</h1>
@@ -12,7 +12,7 @@
         </div>
       </div>
       <button class="btn-close" (click)="cancel()" aria-label="Fermer">
-        <i class="icon-x"></i>
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
     </div>
 
@@ -21,7 +21,7 @@
       <!-- Nom complet -->
       <div class="form-group">
         <label for="nom_complet">
-          <i class="icon-user"></i>
+          <i class="fa-solid fa-user" aria-hidden="true"></i>
           Nom complet <span class="required">*</span>
         </label>
         <input
@@ -42,7 +42,7 @@
       <!-- Email -->
       <div class="form-group">
         <label for="email">
-          <i class="icon-mail"></i>
+          <i class="fa-solid fa-envelope" aria-hidden="true"></i>
           Email <span class="required">*</span>
         </label>
         <input
@@ -63,7 +63,7 @@
       <!-- Téléphone -->
       <div class="form-group">
         <label for="telephone">
-          <i class="icon-phone"></i>
+          <i class="fa-solid fa-phone" aria-hidden="true"></i>
           Téléphone
         </label>
         <input
@@ -84,7 +84,7 @@
       <!-- Mot de passe -->
       <div class="form-group">
         <label for="mot_de_passe">
-          <i class="icon-lock"></i>
+          <i class="fa-solid fa-lock" aria-hidden="true"></i>
           Mot de passe <span class="required">*</span>
         </label>
         <div class="password-input-wrapper">
@@ -104,7 +104,7 @@
             [attr.aria-pressed]="showPassword"
             aria-label="Afficher / masquer le mot de passe"
           >
-            <i [class]="showPassword ? 'icon-eye-off' : 'icon-eye'"></i>
+            <i [class]="showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'" aria-hidden="true"></i>
           </button>
         </div>
         <div *ngIf="submitted && f['mot_de_passe'].errors" class="invalid-feedback">
@@ -117,7 +117,7 @@
       <!-- Confirmation mot de passe -->
       <div class="form-group">
         <label for="confirm_password">
-          <i class="icon-lock"></i>
+          <i class="fa-solid fa-lock" aria-hidden="true"></i>
           Confirmer le mot de passe <span class="required">*</span>
         </label>
         <div class="password-input-wrapper">
@@ -137,7 +137,7 @@
             [attr.aria-pressed]="showConfirmPassword"
             aria-label="Afficher / masquer la confirmation du mot de passe"
           >
-            <i [class]="showConfirmPassword ? 'icon-eye-off' : 'icon-eye'"></i>
+            <i [class]="showConfirmPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'" aria-hidden="true"></i>
           </button>
         </div>
         <div *ngIf="submitted && f['confirm_password'].errors" class="invalid-feedback">
@@ -148,7 +148,7 @@
 
       <!-- Info Box -->
       <div class="info-box">
-        <i class="icon-info"></i>
+        <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
         <div>
           <strong>Information importante</strong>
           <p>L'administrateur créé aura accès à toutes les fonctionnalités de gestion de la plateforme. Assurez-vous de créer un compte sécurisé avec un mot de passe fort.</p>
@@ -162,11 +162,11 @@
         </button>
         <button type="submit" class="btn btn-primary" [disabled]="loading">
           <span *ngIf="!loading">
-            <i class="icon-check"></i>
+            <i class="fa-solid fa-check" aria-hidden="true"></i>
             Créer l'administrateur
           </span>
           <span *ngIf="loading">
-            <i class="spinner"></i>
+            <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
             Création en cours...
           </span>
         </button>

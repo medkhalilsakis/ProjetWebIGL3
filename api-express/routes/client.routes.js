@@ -97,7 +97,7 @@ router.get('/adresses', authMiddleware, checkRole('client'), async (req, res) =>
     const clientId = clientResult.rows[0].id;
 
     const result = await db.query(
-      `SELECT a.id, a.rue, a.code_postal, a.ville, a.type_adresse, a.coordonnees_gps, ca.est_principale
+      `SELECT a.id, a.rue, a.code_postal, a.ville, a.complement, a.type_adresse, a.coordonnees_gps, ca.est_principale, ca.libelle
        FROM adresses a
        JOIN client_adresses ca ON ca.adresse_id = a.id
        WHERE ca.client_id = $1
@@ -115,29 +115,34 @@ router.get('/adresses', authMiddleware, checkRole('client'), async (req, res) =>
 // POST add address
 router.post('/adresses', authMiddleware, checkRole('client'), async (req, res) => {
   try {
-    const { rue, code_postal, ville, type_adresse, latitude, longitude } = req.body;
+    const { rue, code_postal, ville, complement, libelle, est_principale, latitude, longitude } = req.body;
 
     const clientResult = await db.query('SELECT id FROM clients WHERE utilisateur_id = $1 LIMIT 1', [req.user.user_id]);
     if (clientResult.rows.length === 0) return res.status(404).json({ success: false, message: 'Client not found' });
     const clientId = clientResult.rows[0].id;
 
-    const lon = Number(longitude);
-    const lat = Number(latitude);
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
-      return res.status(400).json({ success: false, message: 'Coordonnées invalides' });
+    // Handle GPS coordinates - optional, default to 0,0 if not provided
+    let lon = 0;
+    let lat = 0;
+    if (latitude !== undefined && longitude !== undefined) {
+      lon = Number(longitude);
+      lat = Number(latitude);
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+        return res.status(400).json({ success: false, message: 'Coordonnées invalides' });
+      }
     }
 
     const adresseId = uuidv4();
     await db.query(
-      `INSERT INTO adresses (id, rue, code_postal, ville, type_adresse, coordonnees_gps, date_creation)
+      `INSERT INTO adresses (id, rue, code_postal, ville, complement, coordonnees_gps, date_creation)
        VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($6, $7), 4326), now())`,
-      [adresseId, rue || '', code_postal || '', ville || '', type_adresse || 'domicile', lon, lat]
+      [adresseId, rue || '', code_postal || '', ville || '', complement || '', lon, lat]
     );
 
     await db.query(
-      `INSERT INTO client_adresses (client_id, adresse_id, est_principale, date_ajout)
-       VALUES ($1, $2, false, now())`,
-      [clientId, adresseId]
+      `INSERT INTO client_adresses (client_id, adresse_id, est_principale, libelle, date_ajout)
+       VALUES ($1, $2, $3, $4, now())`,
+      [clientId, adresseId, est_principale || false, libelle || '']
     );
 
     return res.status(201).json({ success: true, message: 'Address added successfully', data: { id: adresseId } });

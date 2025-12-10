@@ -3,9 +3,11 @@ import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { HttpClient, HttpParams } from '@angular/common/http';
+import { FaIconComponent } from '@fortawesome/angular-fontawesome';
 import { AuthService } from '../services/authentification';
 import { ToastService } from '../services/toast';
 import { interval, Subscription } from 'rxjs';
+import { MatIconModule } from '@angular/material/icon';
 
 // Interfaces
 interface DashboardStats {
@@ -103,7 +105,7 @@ interface Notification {
 
 @Component({
   selector: 'app-admin-dashboard',
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, RouterLink, MatIconModule],
   templateUrl: './admin-dashboard.html',
   styleUrl: './admin-dashboard.css'
 })
@@ -587,6 +589,10 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
     if (tab === 'commandes') this.loadCommandes();
     if (tab === 'paiements') this.loadPaiements();
     if (tab === 'support') this.loadTickets();
+  }
+
+  goHome(): void {
+    this.router.navigate(['/']);
   }
 }
 
