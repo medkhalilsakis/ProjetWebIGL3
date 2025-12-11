@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, BehaviorSubject } from 'rxjs';
+import { AuthService } from './authentification';
 
 interface Document {
   id: string;
@@ -14,6 +15,7 @@ interface LivreurEnAttente {
   livreur_id?: string;
   email: string;
   nom_complet: string;
+  statut?: string;
   telephone?: string;
   type_vehicule?: string;
   numero_permis?: string;
@@ -50,7 +52,10 @@ export class LivreurVerificationService {
   private pendingLivreursSubject = new BehaviorSubject<LivreurEnAttente[]>([]);
   public pendingLivreurs$ = this.pendingLivreursSubject.asObservable();
 
-  constructor(private http: HttpClient) {}
+  constructor(
+    private http: HttpClient,
+    private auth: AuthService
+  ) {}
 
   /**
    * Récupère la liste des livreurs en attente de vérification
@@ -59,10 +64,11 @@ export class LivreurVerificationService {
     const params = new HttpParams()
       .set('limit', limit.toString())
       .set('offset', offset.toString());
+    const authOptions = this.auth.getAuthHeaders();
 
     return this.http.get<PendingLivreursResponse>(
       `${this.apiUrl}/livreurs/en-attente`,
-      { params }
+      { ...authOptions, params }
     );
   }
 
@@ -70,8 +76,10 @@ export class LivreurVerificationService {
    * Récupère les détails complets d'un livreur en attente
    */
   getLivreurDetails(livreurId: string): Observable<LivreurDetailsResponse> {
+    const authOptions = this.auth.getAuthHeaders();
     return this.http.get<LivreurDetailsResponse>(
-      `${this.apiUrl}/livreurs/${livreurId}/details`
+      `${this.apiUrl}/livreurs/${livreurId}/details`,
+      authOptions
     );
   }
 
@@ -79,9 +87,11 @@ export class LivreurVerificationService {
    * Accepte un livreur après vérification
    */
   accepterLivreur(livreurId: string): Observable<VerificationResponse> {
+    const authOptions = this.auth.getAuthHeaders();
     return this.http.put<VerificationResponse>(
       `${this.apiUrl}/livreurs/${livreurId}/verifier`,
-      { action: 'accepter' }
+      { action: 'accepter' },
+      authOptions
     );
   }
 
@@ -89,12 +99,14 @@ export class LivreurVerificationService {
    * Rejette un livreur avec raison optionnelle
    */
   rejeterLivreur(livreurId: string, raisonRejet?: string): Observable<VerificationResponse> {
+    const authOptions = this.auth.getAuthHeaders();
     return this.http.put<VerificationResponse>(
       `${this.apiUrl}/livreurs/${livreurId}/verifier`,
       { 
         action: 'rejeter',
         raison_rejet: raisonRejet || null
-      }
+      },
+      authOptions
     );
   }
 

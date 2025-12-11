@@ -9,6 +9,7 @@ import { AdminDashboardComponent } from './admin-dashboard/admin-dashboard';
 import { AddAdmin } from './add-admin/add-admin';
 import { Accueil } from './accueil/accueil';
 import { ListProduits } from './list-produits/list-produits';
+import { LivreurDashboardComponent } from './livreur-dashboard/livreur-dashboard';
 
 export const routes: Routes = [
 
@@ -56,6 +57,17 @@ export const routes: Routes = [
     children: [
       { path: 'dashboard', component: AdminDashboardComponent },
       { path: 'add-admin', component: AddAdmin },
+      { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
+    ]
+  },
+
+  // 🚚 Routes protégées livreur
+  {
+    path: 'livreur',
+    canActivate: [AuthGuard, RoleGuard],
+    data: { role: 'livreur' },
+    children: [
+      { path: 'dashboard', component: LivreurDashboardComponent },
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' }
     ]
   },

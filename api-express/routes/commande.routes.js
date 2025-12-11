@@ -366,4 +366,183 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * GET /livreurs-disponibles - List available delivery drivers for checkout
+ * Query: gouvernorat (city/governorate name)
+ * Returns: List of livreurs with distance estimate and pricing
+ */
+router.get('/livreurs-disponibles', authMiddleware, checkRole('client'), async (req, res) => {
+  try {
+    const { gouvernorat } = req.query;
+    if (!gouvernorat) {
+      return res.status(400).json({ success: false, message: 'Gouvernorat requis' });
+    }
+
+    // Find all livreurs who deliver to this gouvernorat
+    const result = await db.query(
+      `SELECT l.id, l.utilisateur_id, l.numero_permis, l.type_vehicule,
+              l.note_moyenne, l.nombre_livraisons, l.zones_livraison, l.tarif_par_km,
+              u.nom_complet, u.email, u.telephone, u.photo_profil, u.statut
+       FROM livreurs l
+       JOIN utilisateurs u ON l.utilisateur_id = u.id
+       WHERE u.statut = 'actif' 
+         AND l.zones_livraison @> $1::jsonb
+       ORDER BY l.note_moyenne DESC NULLS LAST, l.nombre_livraisons DESC NULLS LAST`,
+      [JSON.stringify([gouvernorat])]
+    );
+
+    const livreurs = result.rows.map(row => ({
+      id: row.id,
+      utilisateur_id: row.utilisateur_id,
+      nom_complet: row.nom_complet,
+      email: row.email,
+      telephone: row.telephone,
+      photo_profil: row.photo_profil,
+      type_vehicule: row.type_vehicule,
+      note_moyenne: row.note_moyenne || 0,
+      nombre_livraisons: row.nombre_livraisons || 0,
+      tarif_par_km: parseFloat(row.tarif_par_km) || 0,
+      zones_livraison: row.zones_livraison || []
+    }));
+
+    return res.json({ success: true, data: livreurs });
+  } catch (error) {
+    console.error('Error fetching available livreurs:', error);
+    return res.status(500).json({ success: false, message: 'Error fetching livreurs', details: error.message });
+  }
+});
+
+/**
+ * POST /estimer-livraison - Estimate delivery cost and time
+ * Body: { gouvernorat, montant_commande }
+ * Returns: Estimated cost and time
+ */
+router.post('/estimer-livraison', authMiddleware, checkRole('client'), async (req, res) => {
+  try {
+    const { gouvernorat, montant_commande } = req.body;
+    if (!gouvernorat) {
+      return res.status(400).json({ success: false, message: 'Gouvernorat requis' });
+    }
+
+    // Fixed distance estimate per gouvernorat (simplified - in production use real geolocation)
+    const distanceEstimates = {
+      'Tunis': 0,
+      'Ariana': 12,
+      'Ben Arous': 18,
+      'Manouba': 15,
+      'Nabeul': 65,
+      'Bizerte': 70,
+      'Beja': 95,
+      'Jendouba': 120,
+      'Le Kef': 140,
+      'Siliana': 125,
+      'Sousse': 140,
+      'Monastir': 155,
+      'Mahdia': 180,
+      'Kairouan': 160,
+      'Kasserine': 200,
+      'Sfax': 330,
+      'Gabes': 460,
+      'Gafsa': 380,
+      'Tozeur': 550,
+      'Kebili': 520,
+      'Tataouine': 650,
+      'Zaghouan': 40,
+      'Sidi Bouzid': 250
+    };
+
+    const distance = distanceEstimates[gouvernorat] || 20;
+    const estimatedDeliveryTime = Math.ceil(distance / 40 * 60); // ~40 km/h average
+
+    return res.json({
+      success: true,
+      data: {
+        gouvernorat,
+        distance_km: distance,
+        temps_estime_minutes: estimatedDeliveryTime
+      }
+    });
+  } catch (error) {
+    console.error('Error estimating delivery:', error);
+    return res.status(500).json({ success: false, message: 'Error estimating delivery', details: error.message });
+  }
+});
+
+/**
+ * PATCH /:id/confirmer-livreur - Livreur confirme la commande et fournit le temps
+ * Body: { temps_estime }
+ */
+router.patch('/:id/confirmer-livreur', authMiddleware, checkRole('livreur'), async (req, res) => {
+  let client;
+  try {
+    client = await db.connect();
+    const commandeId = req.params.id;
+    const { temps_estime } = req.body;
+
+    if (!temps_estime || temps_estime <= 0) {
+      return res.status(400).json({ success: false, message: 'Temps estimé invalide' });
+    }
+
+    // Vérifier que la commande existe et que le livreur est assigné
+    const commandeRes = await client.query(
+      'SELECT id, client_id, livreur_id, statut FROM commandes WHERE id = $1',
+      [commandeId]
+    );
+    if (commandeRes.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Commande introuvable' });
+    }
+
+    const commande = commandeRes.rows[0];
+    if (commande.statut !== 'en_attente_confirmation') {
+      return res.status(400).json({ success: false, message: 'Commande n\'est pas en attente de confirmation' });
+    }
+
+    // Vérifier que le livreur qui confirme est celui assigné
+    const livreurRes = await client.query(
+      'SELECT utilisateur_id FROM livreurs WHERE id = $1',
+      [commande.livreur_id]
+    );
+    if (livreurRes.rowCount === 0 || livreurRes.rows[0].utilisateur_id !== req.user.user_id) {
+      return res.status(403).json({ success: false, message: 'Livreur non autorisé' });
+    }
+
+    // Mettre à jour le statut et le temps estimé
+    await client.query(
+      `UPDATE commandes 
+       SET statut = 'en_preparation', temps_estime_livreur = $1, date_confirmation_livreur = NOW()
+       WHERE id = $2`,
+      [parseInt(temps_estime, 10), commandeId]
+    );
+
+    // Historiser le changement
+    await client.query(
+      `INSERT INTO historique_statuts_commandes (id, commande_id, ancien_statut, nouveau_statut, date_changement)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [require('uuid').v4(), commandeId, 'en_attente_confirmation', 'en_preparation']
+    );
+
+    // Notifier le client
+    const clientRes = await client.query('SELECT utilisateur_id FROM clients WHERE id = $1', [commande.client_id]);
+    if (clientRes.rowCount > 0) {
+      const { createNotification, notificationTypes } = require('./notification.routes');
+      const notifData = notificationTypes.CONFIRMATION_LIVREUR(commandeId.substring(0, 8), temps_estime);
+      await createNotification(
+        clientRes.rows[0].utilisateur_id,
+        notifData.titre,
+        notifData.message,
+        notifData.type,
+        notifData.priorite,
+        `/commandes/${commandeId}`
+      );
+    }
+
+    return res.json({ success: true, message: 'Commande confirmée par le livreur', commandeId });
+  } catch (error) {
+    console.error('Error confirming order:', error);
+    return res.status(500).json({ success: false, message: 'Erreur lors de la confirmation', details: error.message });
+  } finally {
+    if (client) client.release();
+  }
+});
+
 module.exports = router;

@@ -121,7 +121,7 @@ router.patch('/utilisateurs/:id/statut', authMiddleware, checkRole('admin'), asy
     if (!statut) return res.status(400).json({ success: false, message: 'Statut requis' });
 
     const result = await db.query(
-      'UPDATE utilisateurs SET statut = $1, updated_at = now() WHERE id = $2 RETURNING id',
+      'UPDATE utilisateurs SET statut = $1 WHERE id = $2 RETURNING id',
       [statut, id]
     );
     if (result.rowCount === 0) return res.status(404).json({ success: false, message: 'Utilisateur introuvable' });
@@ -306,7 +306,7 @@ router.get('/livreurs/en-attente', authMiddleware, checkRole('admin'), async (re
               u.photo_profil, l.id as livreur_id, l.type_vehicule, l.numero_permis
        FROM utilisateurs u
        LEFT JOIN livreurs l ON u.id = l.utilisateur_id
-       WHERE u.role = 'livreur' AND u.statut = 'en_attente'
+       WHERE u.role = 'livreur' AND u.statut = 'verifie'
        ORDER BY u.date_creation ASC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
@@ -329,9 +329,11 @@ router.get('/livreurs/en-attente', authMiddleware, checkRole('admin'), async (re
         
         return {
           id: row.id,
+          livreur_id: row.livreur_id,
           email: row.email,
           nom_complet: row.nom_complet,
           telephone: row.telephone,
+          statut: row.statut,
           type_vehicule: row.type_vehicule,
           numero_permis: row.numero_permis,
           date_creation: row.date_creation,
@@ -372,12 +374,25 @@ router.put('/livreurs/:livreurId/verifier', authMiddleware, checkRole('admin'), 
 
     await client.query('BEGIN');
 
-    // Récupérer le livreur et vérifier son statut
-    const livreurResult = await client.query(
-      `SELECT u.id, u.utilisateur_id FROM livreurs u
-       WHERE u.id = $1`,
+    // Récupérer le livreur - livreurId peut être soit l'utilisateur_id soit le livreur_id
+    // D'abord, chercher si c'est un utilisateur_id dans la table livreurs
+      console.log(`[LIVREUR_VERIFY] Début vérification: livreurId=${livreurId}, action=${action}`);
+
+    let livreurResult = await client.query(
+      `SELECT l.id as livreur_id, l.utilisateur_id FROM livreurs l
+       WHERE l.utilisateur_id = $1`,
       [livreurId]
     );
+
+    // Si pas trouvé, chercher par livreur_id
+    if (livreurResult.rows.length === 0) {
+      livreurResult = await client.query(
+        `SELECT l.id as livreur_id, l.utilisateur_id FROM livreurs l
+         WHERE l.id = $1`,
+        [livreurId]
+      );
+    }
+    console.log(`[LIVREUR_VERIFY] Livreur trouvé:`, livreurResult.rows[0] || 'NOT FOUND');
 
     if (livreurResult.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -387,24 +402,38 @@ router.put('/livreurs/:livreurId/verifier', authMiddleware, checkRole('admin'), 
       });
     }
 
-    const utilisateurId = livreurResult.rows[0].utilisateur_id;
+    const { livreur_id, utilisateur_id } = livreurResult.rows[0];
 
     // Mettre à jour le statut de l'utilisateur
     const newStatus = action === 'accepter' ? 'actif' : 'rejete';
+      console.log(`[LIVREUR_VERIFY] Mise à jour utilisateur ${utilisateur_id} => statut=${newStatus}`);
+
     
     await client.query(
       `UPDATE utilisateurs 
-       SET statut = $1, date_verification = NOW(), verifie_par_admin = true
+       SET statut = $1
        WHERE id = $2`,
-      [newStatus, utilisateurId]
+      [newStatus, utilisateur_id]
     );
+
+    // Si accepté, mettre à jour aussi les colonnes de vérification dans la table livreurs
+    if (action === 'accepter') {
+        console.log(`[LIVREUR_VERIFY] Mise à jour livreur ${livreur_id} => vehicule_enregistre=true, assurance_valide=true`);
+
+      await client.query(
+        `UPDATE livreurs 
+         SET vehicule_enregistre = true, assurance_valide = true
+         WHERE id = $1`,
+        [livreur_id]
+      );
+    }
 
     // Enregistrer la décision dans un audit/historique (optionnel)
     if (action === 'rejeter') {
       await client.query(
         `INSERT INTO audit_livreurs (id, livreur_id, action, raison, admin_id, date_action)
          VALUES ($1, $2, $3, $4, $5, NOW())`,
-        [require('uuid').v4(), livreurId, 'rejet', raison_rejet || null, req.user.id]
+        [require('uuid').v4(), livreur_id, 'rejet', raison_rejet || null, req.user.id]
       ).catch(err => console.warn('Could not log rejection:', err));
     }
 

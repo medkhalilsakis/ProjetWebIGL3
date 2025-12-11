@@ -31,12 +31,59 @@ router.get('/profile', authMiddleware, checkRole('livreur'), async (req, res) =>
         numero_permis: livreur.numero_permis,
         statut: livreur.statut,
         note_moyenne: livreur.note_moyenne,
-        nombre_livraisons: livreur.nombre_livraisons
+        nombre_livraisons: livreur.nombre_livraisons,
+        zones_livraison: livreur.zones_livraison || [],
+        tarif_par_km: livreur.tarif_par_km || null
       }
     });
   } catch (error) {
     console.error('Error fetching livreur profile:', error);
     return res.status(500).json({ success: false, message: 'Error fetching profile' });
+  }
+});
+
+// PATCH update livreur profile (zones de livraison + tarif)
+router.patch('/profile', authMiddleware, checkRole('livreur'), async (req, res) => {
+  try {
+    const { zones_livraison, tarif_par_km, type_vehicule, numero_permis } = req.body;
+
+    // Validate payload minimally
+    const zones = Array.isArray(zones_livraison) ? zones_livraison : null;
+    const tarif = (tarif_par_km !== undefined && tarif_par_km !== null) ? parseFloat(tarif_par_km) : null;
+
+    const updates = [];
+    const params = [];
+    let idx = 1;
+
+    if (zones !== null) {
+      updates.push(`zones_livraison = $${idx++}`);
+      params.push(JSON.stringify(zones));
+    }
+    if (tarif !== null) {
+      updates.push(`tarif_par_km = $${idx++}`);
+      params.push(tarif);
+    }
+    if (type_vehicule !== undefined) {
+      updates.push(`type_vehicule = $${idx++}`);
+      params.push(type_vehicule);
+    }
+    if (numero_permis !== undefined) {
+      updates.push(`numero_permis = $${idx++}`);
+      params.push(numero_permis);
+    }
+
+    if (updates.length === 0) return res.status(400).json({ success: false, message: 'No fields to update' });
+
+    params.push(req.user.user_id);
+    const query = `UPDATE livreurs SET ${updates.join(', ')} WHERE utilisateur_id = $${params.length} RETURNING *`;
+    const result = await db.query(query, params);
+
+    if (result.rowCount === 0) return res.status(404).json({ success: false, message: 'Livreur not found' });
+
+    return res.json({ success: true, message: 'Profile updated', data: result.rows[0] });
+  } catch (error) {
+    console.error('Error updating livreur profile:', error);
+    return res.status(500).json({ success: false, message: 'Error updating profile' });
   }
 });
 

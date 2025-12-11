@@ -14,7 +14,6 @@
     </nav>
 
     <div class="auth-buttons">
-      <button mat-stroked-button class="signin-btn" (click)="goHome()">Retour</button>
       <button mat-raised-button class="signup-btn" (click)="logout()">Déconnexion</button>
     </div>
   </div>
@@ -40,6 +39,7 @@
     </div>
     <div class="header-right">
       <span class="badge badge-pill">Notifications: {{ unreadCount }}</span>
+      <button class="btn ghost" (click)="switchTab('notifications')">Voir notifications</button>
       <button class="btn ghost" (click)="logout()">Déconnexion</button>
     </div>
   </header>
@@ -65,6 +65,18 @@
   <section *ngIf="activeTab === 'accueil'" class="panel">
     <h2>Tableau de bord</h2>
 
+    <!-- Quick Actions (statique mais connectées aux méthodes TS existantes) -->
+    <div class="card quick-actions">
+      <h3>Actions rapides</h3>
+      <div class="actions-grid">
+        <button class="btn" (click)="goProducts()">Voir produits</button>
+        <button class="btn" (click)="finalizeCart()">Finaliser panier</button>
+        <button class="btn" (click)="switchTab('historique')">Mes commandes</button>
+        <button class="btn" (click)="contactSupport()">Contacter support</button>
+      </div>
+      <p class="muted">Astuce : utilisez les actions rapides pour tester le flux sans remplir tous les formulaires.</p>
+    </div>
+
     <!-- Panier / Checkout -->
     <div class="card cart-summary" *ngIf="cartCount() > 0; else emptyCart">
       <div class="cart-summary-info">
@@ -75,36 +87,294 @@
         </div>
       </div>
 
-      <div class="checkout-grid">
-        <div>
-          <p class="label">Adresse de livraison</p>
-          <select [(ngModel)]="selectedAddressId" class="checkout-select">
-            <option [ngValue]="null">Sélectionner...</option>
-            <option *ngFor="let addr of addresses" [ngValue]="addr.id">
-              {{ addr.rue }}, {{ addr.ville }} {{ addr.code_postal }}
-            </option>
-          </select>
-          <button class="ghost" (click)="showAddressForm = true">+ Ajouter une adresse</button>
+      <!-- CHECKOUT STEPS -->
+      <div class="checkout-wrapper">
+        <!-- Step Indicators (unchanged) -->
+        <div class="checkout-steps">
+          <div [class.active]="checkoutStep === 'address'" [class.completed]="checkoutStep !== 'address'">
+            <span class="step-number">1</span>
+            <span>Adresse</span>
+          </div>
+          <div [class.active]="checkoutStep === 'payment'" [class.completed]="checkoutStep === 'livreur' || checkoutStep === 'summary'">
+            <span class="step-number">2</span>
+            <span>Paiement</span>
+          </div>
+          <div [class.active]="checkoutStep === 'livreur'" [class.completed]="checkoutStep === 'summary'">
+            <span class="step-number">3</span>
+            <span>Livreur</span>
+          </div>
+          <div [class.active]="checkoutStep === 'summary'">
+            <span class="step-number">4</span>
+            <span>Résumé</span>
+          </div>
         </div>
 
-        <div>
-          <p class="label">Méthode de paiement</p>
-          <label class="radio">
-            <input type="radio" name="pay" value="carte" [(ngModel)]="paymentChoice" />
-            Carte bancaire
-          </label>
-          <label class="radio">
-            <input type="radio" name="pay" value="espece" [(ngModel)]="paymentChoice" />
-            Espèce à la livraison
-          </label>
+        <!-- ORDER CONFIRMATION WAITING STATE -->
+        <div *ngIf="orderConfirmationState === 'waiting'" class="checkout-step confirmation-waiting">
+          <div class="waiting-container">
+            <div class="spinner"></div>
+            <h3>⏳ En attente de confirmation</h3>
+            <p>{{ confirmationMessage }}</p>
+            <p class="small-text">Le livreur examine votre commande...</p>
+          </div>
+        </div>
+
+        <!-- ORDER CONFIRMATION CONFIRMED STATE WITH MAP -->
+        <div *ngIf="orderConfirmationState === 'confirmed'" class="checkout-step confirmation-confirmed">
+          <div class="confirmation-content">
+            <h3>✅ Commande confirmée!</h3>
+            <p class="confirmation-message">{{ confirmationMessage }}</p>
+
+            <!-- Small demo controls (pour tester rapidement l'UI sans backend) -->
+            <div class="demo-controls">
+              <button class="btn ghost" (click)="orderConfirmationState='waiting'; confirmationMessage='En attente (mode demo)';">Simuler attente</button>
+              <button class="btn" (click)="orderConfirmationState='confirmed'; confirmationMessage='Simulation : livreur confirmé'; driverETA = 10">Simuler confirmation</button>
+            </div>
+
+            <!-- Map Display (statique SVG but dynamic labels) -->
+            <div class="delivery-map-container">
+              <div class="map-header">
+                <h4>🗺️ Suivi de livraison</h4>
+                <span class="eta-badge">ETA: {{ driverETA || etaMinutes || '—' }} min</span>
+              </div>
+              <svg class="delivery-map" viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg">
+                <!-- Background -->
+                <rect width="600" height="400" fill="#f0f4f8"/>
+                <!-- Grid & route simplified for demo -->
+                <path d="M 100 80 Q 200 150, 350 280 T 500 320" stroke="#667eea" stroke-width="3" fill="none" stroke-dasharray="5,5"/>
+                <circle cx="100" cy="80" r="20" fill="#48bb78"/>
+                <text x="100" y="85" text-anchor="middle" fill="white" font-size="24">🏪</text>
+                <circle cx="200" cy="150" r="18" fill="#667eea" opacity="0.8"/>
+                <text x="200" y="180" text-anchor="middle" fill="#2d3748" font-size="12">🚚 Livreur</text>
+                <circle cx="500" cy="320" r="20" fill="#fc8181"/>
+                <text x="500" y="325" text-anchor="middle" fill="white" font-size="24">📍</text>
+                <text x="300" y="30" text-anchor="middle" fill="#667eea" font-size="14" font-weight="bold">Distance: {{ deliveryEstimate?.distance_km || '—' }}km</text>
+              </svg>
+            </div>
+
+            <div class="confirmation-details">
+              <div class="detail-row">
+                <span class="label">Livreur assigné:</span>
+                <strong>{{ selectedLivreur?.nom_complet || '—' }}</strong>
+              </div>
+              <div class="detail-row">
+                <span class="label">Véhicule:</span>
+                <strong>{{ selectedLivreur?.type_vehicule || '—' }}</strong>
+              </div>
+              <div class="detail-row">
+                <span class="label">Temps estimé:</span>
+                <strong class="highlight">{{ driverETA || etaMinutes || '—' }} minutes</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 1: Address Selection -->
+        <div *ngIf="checkoutStep === 'address'" class="checkout-step">
+          <h3>Sélectionner votre adresse de livraison</h3>
+          <div class="address-options">
+            <div *ngFor="let addr of addresses" class="address-option" 
+                 [class.selected]="selectedAddressId === addr.id"
+                 (click)="selectedAddressId = addr.id">
+              <input type="radio" [checked]="selectedAddressId === addr.id" />
+              <div class="address-details">
+                <strong>{{ addr.libelle || 'Adresse' }}</strong>
+                <p>{{ addr.rue }}</p>
+                <p class="muted">{{ addr.ville }} {{ addr.code_postal }}</p>
+              </div>
+            </div>
+          </div>
+          <button class="btn ghost" (click)="showAddressForm = true">+ Ajouter une adresse</button>
+
+          <!-- Gouvernorat Selection -->
+          <div class="governorat-section">
+            <h4>Choisir votre gouvernorat de livraison</h4>
+            <div class="governorat-select">
+              <select [(ngModel)]="selectedGouvernorat" class="form-control">
+                <option [value]="null">-- Sélectionnez un gouvernorat --</option>
+                <option *ngFor="let gov of GOVERNORATES" [value]="gov">{{ gov }}</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="checkout-actions">
+            <button class="btn" (click)="proceedFromAddress()">Continuer</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Payment Method -->
+        <div *ngIf="checkoutStep === 'payment'" class="checkout-step">
+          <h3>Choisir un moyen de paiement</h3>
+          <div class="payment-options">
+            <label class="payment-option">
+              <input type="radio" [(ngModel)]="paymentChoice" value="espece" />
+              <div class="payment-method-card">
+                <span class="icon">💰</span>
+                <span>Espèce à la livraison</span>
+              </div>
+            </label>
+            <label class="payment-option">
+              <input type="radio" [(ngModel)]="paymentChoice" value="carte" />
+              <div class="payment-method-card">
+                <span class="icon">💳</span>
+                <span>Carte bancaire</span>
+              </div>
+            </label>
+          </div>
+
+          <!-- Card Form (shown if carte selected) -->
+          <div *ngIf="paymentChoice === 'carte'" class="card-form">
+            <h4>Informations de la carte</h4>
+            <p class="info-text">Formulaire de paiement virtuel (données non enregistrées)</p>
+            <div class="form-group">
+              <label>Numéro de carte (16 chiffres)</label>
+              <input type="text" 
+                     [(ngModel)]="cardInfo.numero" 
+                     placeholder="1234 5678 9012 3456"
+                     maxlength="19"
+                     (input)="cardFilled = isCardValid()" />
+            </div>
+            <div class="form-group">
+              <label>Titulaire de la carte</label>
+              <input type="text" 
+                     [(ngModel)]="cardInfo.titulaire" 
+                     placeholder="NOM PRENOM"
+                     (input)="cardFilled = isCardValid()" />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Date d'expiration</label>
+                <input type="text" 
+                       [(ngModel)]="cardInfo.expiration" 
+                       placeholder="MM/AA"
+                       maxlength="5"
+                       (input)="cardFilled = isCardValid()" />
+              </div>
+              <div class="form-group">
+                <label>CVV</label>
+                <input type="text" 
+                       [(ngModel)]="cardInfo.cvv" 
+                       placeholder="123"
+                       maxlength="3"
+                       (input)="cardFilled = isCardValid()" />
+              </div>
+            </div>
+          </div>
+
+          <div class="checkout-actions">
+            <button class="btn ghost" (click)="checkoutStep = 'address'">Retour</button>
+            <button class="btn" (click)="proceedFromPayment()">Continuer</button>
+          </div>
+        </div>
+
+        <!-- Step 3: Livreur Selection -->
+        <div *ngIf="checkoutStep === 'livreur'" class="checkout-step">
+          <h3>Sélectionner un livreur</h3>
+          
+          <!-- Distance & Time Info -->
+          <div *ngIf="deliveryEstimate" class="delivery-info">
+            <p>📍 Ville: <strong>{{ cartCity }}</strong></p>
+            <p>📏 Distance estimée: <strong>{{ deliveryEstimate.distance_km }} km</strong></p>
+            <p>⏱️ Temps estimé: <strong>{{ deliveryEstimate.temps_estime_minutes }} minutes</strong></p>
+          </div>
+
+          <!-- Livreurs List -->
+          <div class="livreurs-grid">
+            <div *ngIf="availableLivreurs.length === 0" class="empty-state">
+              <p>Aucun livreur disponible pour cette zone.</p>
+              <p class="muted">Vous pouvez revenir plus tard ou modifier le gouvernorat.</p>
+            </div>
+            <div *ngFor="let livreur of availableLivreurs" 
+                 class="livreur-card"
+                 [class.selected]="selectedLivreur?.id === livreur.id"
+                 (click)="selectLivreur(livreur)">
+              <div class="livreur-header">
+                <img [src]="livreur.photo_profil || 'assets/default-avatar.png'" 
+                     alt="{{ livreur.nom_complet }}"
+                     class="avatar" />
+                <div class="livreur-info">
+                  <strong>{{ livreur.nom_complet }}</strong>
+                  <p class="vehicle">{{ livreur.type_vehicule }}</p>
+                </div>
+              </div>
+              <div class="livreur-stats">
+                <span>⭐ {{ livreur.note_moyenne.toFixed(1) }}</span>
+                <span>📦 {{ livreur.nombre_livraisons }} livraisons</span>
+              </div>
+              <div class="livreur-pricing" *ngIf="deliveryEstimate">
+                <strong class="price">{{ (deliveryEstimate.distance_km * livreur.tarif_par_km) | currency:'TND':'symbol' }}</strong>
+                <small>{{ livreur.tarif_par_km }} DT/km</small>
+              </div>
+              <input type="radio" [checked]="selectedLivreur?.id === livreur.id" />
+            </div>
+          </div>
+
+          <div class="checkout-actions">
+            <button class="btn ghost" (click)="checkoutStep = 'payment'">Retour</button>
+            <button class="btn" (click)="proceedFromLivreur()">Continuer</button>
+          </div>
+        </div>
+
+        <!-- Step 4: Order Summary -->
+        <div *ngIf="checkoutStep === 'summary'" class="checkout-step">
+          <h3>Résumé de votre commande</h3>
+
+          <!-- Selected Details -->
+          <div class="summary-section">
+            <h4>📍 Adresse</h4>
+            <div *ngIf="getSelectedAddress()" class="summary-item">
+              <p>{{ getSelectedAddress()?.rue }}</p>
+              <p>{{ getSelectedAddress()?.ville }}</p>
+            </div>
+          </div>
+
+          <div class="summary-section">
+            <h4>💳 Paiement</h4>
+            <p>{{ paymentChoice === 'carte' ? 'Carte bancaire' : 'Espèce à la livraison' }}</p>
+          </div>
+
+          <div class="summary-section">
+            <h4>🚚 Livreur</h4>
+            <div *ngIf="selectedLivreur" class="selected-livreur">
+              <div class="livreur-mini">
+                <img [src]="selectedLivreur.photo_profil || 'assets/default-avatar.png'" alt="{{ selectedLivreur.nom_complet }}" />
+                <div>
+                  <strong>{{ selectedLivreur.nom_complet }}</strong>
+                  <p>{{ selectedLivreur.type_vehicule }} • ⭐{{ selectedLivreur.note_moyenne.toFixed(1) }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Order Summary Details -->
+          <div class="summary-section order-breakdown">
+            <h4>💰 Détails du coût</h4>
+            <div class="breakdown-line">
+              <span>Sous-total articles:</span>
+              <strong>{{ orderSummary.sousTotal | currency:'TND':'symbol' }}</strong>
+            </div>
+            <div class="breakdown-line">
+              <span>Frais de service (5%):</span>
+              <strong>{{ orderSummary.fraisService | currency:'TND':'symbol' }}</strong>
+            </div>
+            <div class="breakdown-line">
+              <span>Frais de livraison:</span>
+              <strong>{{ orderSummary.fraisLivraison | currency:'TND':'symbol' }}</strong>
+            </div>
+            <div class="breakdown-line total">
+              <span>TOTAL:</span>
+              <strong class="total-amount">{{ orderSummary.total | currency:'TND':'symbol' }}</strong>
+            </div>
+          </div>
+
+          <div class="checkout-actions">
+            <button class="btn ghost" (click)="checkoutStep = 'livreur'">Retour</button>
+            <button class="btn primary" (click)="confirmOrder()">Confirmer la commande</button>
+          </div>
         </div>
       </div>
 
-      <button class="btn" (click)="finalizeCart()" [disabled]="searchingDelivery">
-        <span *ngIf="!searchingDelivery">Finaliser ma commande</span>
-        <span *ngIf="searchingDelivery">Recherche d'un livreur...</span>
-      </button>
-
+      <!-- OLD delivery options (statique demo) -->
       <div class="delivery-options" *ngIf="deliveryOptions.length > 0">
         <p class="label">Livreurs disponibles</p>
         <div class="delivery-card" *ngFor="let opt of deliveryOptions">
@@ -128,7 +398,7 @@
       <h3>Commande en cours</h3>
       <div class="order-status">
         <span [class]="getStatusBadge(activeOrder.statut)">{{ getStatusLabel(activeOrder.statut) }}</span>
-        <span class="eta">Livraison estimée: {{ etaMinutes }} min</span>
+        <span class="eta">Livraison estimée: {{ driverETA || etaMinutes }} min</span>
       </div>
       <p><strong>{{ activeOrder.fournisseur }}</strong></p>
       <p>{{ formatCurrency(activeOrder.montant_total) }}</p>
@@ -239,7 +509,7 @@
           <div class="map-placeholder">
             <p>📍 Carte de localisation</p>
             <p *ngIf="driverLocation">Livreur: {{ driverLocation.lat | number:'1.4-4' }}, {{ driverLocation.lng | number:'1.4-4' }}</p>
-            <p>ETA: {{ etaMinutes }} minutes</p>
+            <p>ETA: {{ driverETA || etaMinutes }} minutes</p>
           </div>
         </div>
       </div>
@@ -399,7 +669,10 @@
     <div class="card">
       <h3>Solde du portefeuille</h3>
       <h1 class="wallet-balance">{{ formatCurrency(walletBalance) }}</h1>
-      <button>Recharger</button>
+      <div class="wallet-actions">
+        <button class="btn" (click)="applyPromo('BONUS10')">Recharger (demo)</button>
+        <button class="btn ghost" (click)="switchTab('portefeuille')">Voir détails</button>
+      </div>
     </div>
 
     <div class="card">
@@ -459,6 +732,15 @@
           <button (click)="sendChatMessage()">Envoyer</button>
         </div>
       </div>
+    </div>
+
+    <!-- FAQ statique -->
+    <div class="card">
+      <h3>FAQ rapide</h3>
+      <ul class="faq-list">
+        <li><strong>Q:</strong> Comment suivre ma commande ? <br/><strong>A:</strong> Allez sur "Commande en cours" pour voir la carte et l'ETA.</li>
+        <li><strong>Q:</strong> Puis-je changer l'adresse après confirmation ? <br/><strong>A:</strong> Non, contactez le support rapidement.</li>
+      </ul>
     </div>
 
     <div class="card">
@@ -522,6 +804,9 @@
   <!-- Notifications -->
   <section *ngIf="activeTab === 'notifications'" class="panel">
     <h2>Notifications & Messages</h2>
+    <div class="notifications-controls">
+      <button class="btn ghost" (click)="unreadCount = 0">Marquer toutes comme lues (demo)</button>
+    </div>
     <div class="notifications-list">
       <div *ngFor="let notif of notifications" class="notification-item" [class.unread]="!notif.lu">
         <div>
@@ -647,4 +932,3 @@
     </div>
   </div>
 </div>
-

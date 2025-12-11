@@ -1,6 +1,3 @@
-<!-- index.html: garder ceci -->
-<!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"> -->
-
 <header class="main-header">
   <div class="container">
     <div class="logo-section" (click)="goHome()">
@@ -15,10 +12,6 @@
       <a routerLink="/contact" class="nav-item">Contact</a>
     </nav>
 
-    <div class="auth-buttons">
-      <button mat-stroked-button class="signin-btn" (click)="goHome()">Retour</button>
-      <button mat-raised-button class="signup-btn" (click)="logout()">Déconnexion</button>
-    </div>
   </div>
 </header>
 
@@ -213,18 +206,18 @@
     <!-- Gestion des Livreurs -->
     <section *ngIf="activeTab === 'livreurs'" class="tab-content">
       <!-- Section: Livreurs en attente de vérification -->
-      <div *ngIf="livreursEnAttente.length > 0" class="pending-livreurs-section">
+      <div *ngIf="livreursEnAttenteList.length > 0" class="pending-livreurs-section">
         <div class="section-header alert-section">
-          <h2>
+            <h2>
             <i class="fa-solid fa-exclamation-circle" aria-hidden="true"></i>
             Livreurs en attente de vérification
-            <span class="badge badge-warning">{{ livreursEnAttente.length }}</span>
+              <span class="badge badge-warning">{{ livreursEnAttenteList.length }}</span>
           </h2>
           <p class="subtitle">Veuillez vérifier les documents et accepter ou rejeter les nouveaux livreurs</p>
         </div>
 
         <div class="pending-cards-grid">
-          <div *ngFor="let livreur of livreursEnAttente" class="pending-card">
+          <div *ngFor="let livreur of livreursEnAttenteList" class="pending-card">
             <div class="card-header">
               <div class="livreur-info">
                 <img 
@@ -313,7 +306,7 @@
       </div>
 
       <!-- Ligne de séparation -->
-      <hr *ngIf="livreursEnAttente.length > 0" class="section-divider">
+      <hr *ngIf="livreursEnAttenteList.length > 0" class="section-divider">
 
       <div class="section-header">
         <h2>Gestion des Livreurs</h2>

@@ -567,6 +567,23 @@
           <button mat-raised-button color="primary">Télécharger</button>
         </form>
       </div>
+
+      <!-- Zones de livraison et tarif -->
+      <div class="card">
+        <h3>Zones de livraison & Tarif</h3>
+        <p>Choisissez les gouvernorats où vous livrez et définissez votre prix par km.</p>
+        <div class="zones-grid">
+          <label *ngFor="let gov of GOVERNORATES" class="zone-item">
+            <input type="checkbox" [checked]="isZoneSelected(gov)" (change)="toggleZone(gov)" />
+            {{ gov }}
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Prix par km (DT)</label>
+          <input type="number" [(ngModel)]="tarifParKm" min="0" step="0.01" />
+        </div>
+        <button mat-raised-button color="primary" (click)="saveDeliveryZones()">Enregistrer zones & tarif</button>
+      </div>
     </section>
   </div>
 

@@ -169,8 +169,8 @@ router.post('/register', async (req, res) => {
     const hashed = await bcrypt.hash(mot_de_passe, SALT_ROUNDS);
     const userId = uuidv4();
 
-    // Set status to 'en_attente' for livreur (pending verification)
-    const statut = role === 'livreur' ? 'en_attente' : 'actif';
+    // Set status to 'verifie' for livreur (pending verification)
+    const statut = role === 'livreur' ? 'verifie' : 'actif';
 
     await client.query(
       `INSERT INTO utilisateurs (id, email, mot_de_passe, nom_complet, telephone, role, statut, date_creation)

@@ -38,6 +38,7 @@ interface Address {
   id: string;
   rue: string;
   ville: string;
+  gouvernorat?: string;
   code_postal: string;
   complement?: string;
   est_principale: boolean;
@@ -97,6 +98,36 @@ interface DeliveryOption {
   price: number;
 }
 
+interface Livreur {
+  id: string;
+  utilisateur_id: string;
+  nom_complet: string;
+  email: string;
+  telephone: string;
+  photo_profil?: string;
+  type_vehicule: string;
+  note_moyenne: number;
+  nombre_livraisons: number;
+  tarif_par_km: number;
+  zones_livraison: string[];
+}
+
+interface DeliveryEstimate {
+  gouvernorat: string;
+  distance_km: number;
+  temps_estime_minutes: number;
+}
+
+
+
+interface User {
+  nom_complet?: string;
+  telephone?: string;
+  email?: string;
+  photo_profil?: string;
+  [key: string]: any;
+} 
+
 @Component({
   selector: 'app-client-dashboard',
   standalone: true,
@@ -121,12 +152,12 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
     | 'notifications' = 'accueil';
 
   // User info
-  currentUser: any = null;
+  currentUser: User | null = null;
   profileImageFile: File | null = null;
 
   // Active order tracking
   activeOrder: Order | null = null;
-  driverLocation: { lat: number; lng: number } | null = null;
+  driverLocation: { lat: number; lng: number } | null = { lat: 48.8566, lng: 2.3522 };
   etaMinutes: number = 0;
 
   // Orders history
@@ -136,10 +167,19 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
   dateFilter: string = '';
   categoryFilter: string = '';
 
+  // Governorates
+  readonly GOVERNORATES = [
+    'Tunis', 'Ariana', 'Ben Arous', 'La Manouba', 'Nabeul', 'Zaghouan', 'Sousse',
+    'Monastir', 'Mahdia', 'Sfax', 'Gafsa', 'Tataouine', 'Médenine', 'Djerba',
+    'Gabès', 'Tozeur', 'Kasserine', 'Sidi Bouzid', 'Kairouan', 'Kébili',
+    'Manouba', 'Jendouba', 'Le Kef', 'Siliana', 'Béja'
+  ];
+
   // Addresses
   addresses: Address[] = [];
   addressForm!: FormGroup;
   showAddressForm = false;
+  selectedGouvernorat: string | null = null;
 
   // Payment methods
   paymentMethods: PaymentMethod[] = [];
@@ -196,6 +236,38 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
   deliveryOptions: DeliveryOption[] = [];
   searchingDelivery = false;
 
+  // Checkout fields
+  availableLivreurs: Livreur[] = [];
+  selectedLivreur: Livreur | null = null;
+  deliveryEstimate: DeliveryEstimate | null = null;
+  cartCity: string = '';
+  
+  // Card payment (virtual, temporary)
+  cardInfo = {
+    numero: '',
+    titulaire: '',
+    expiration: '',
+    cvv: ''
+  };
+  cardFilled = false;
+
+  // Order summary
+  orderSummary = {
+    sousTotal: 0,
+    fraisLivraison: 0,
+    fraisService: 0,
+    total: 0
+  };
+
+  // Checkout step
+  checkoutStep: 'address' | 'payment' | 'livreur' | 'summary' = 'address';
+
+  // Order confirmation state
+  orderConfirmationState: 'waiting' | 'confirmed' | null = null;
+  lastConfirmedOrderId: string | null = null;
+  confirmationMessage: string = '';
+  driverETA: number = 0;
+
   private refreshSub?: Subscription;
 
   constructor(
@@ -207,7 +279,7 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
     private router: Router,
     private cdr: ChangeDetectorRef
   ) {
-    this.currentUser = this.auth.currentUserValue;
+    this.currentUser = this.auth.currentUserValue as User | null;
   }
 
   goHome(): void {
@@ -303,9 +375,119 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
   // ---------- Navigation ----------
   switchTab(tab: ClientDashboardComponent['activeTab']): void {
     this.activeTab = tab;
+
+    // Load real data where needed
     if (tab === 'historique') this.loadOrders();
     if (tab === 'recommandations') this.loadRecommendations();
     if (tab === 'support') this.loadTickets();
+
+    // Apply demo/static data to each tab so UI always shows something useful
+    this.applyDemoDataForTab(tab);
+
+    this.cdr.markForCheck();
+  }
+
+  // Helper to populate static/demo values per tab (useful for development & UI testing)
+  private applyDemoDataForTab(tab: ClientDashboardComponent['activeTab']): void {
+    switch (tab) {
+      case 'accueil':
+        // small demo cart so the cart-summary appears
+        this.cart = [
+          { product: { id: 'p1', nom: 'Pizza Margherita', prix: 9.5 }, quantity: 1 },
+          { product: { id: 'p2', nom: 'Coca-Cola', prix: 1.8 }, quantity: 2 }
+        ];
+        localStorage.setItem(this.cartKey, JSON.stringify(this.cart));
+        break;
+
+      case 'commande_en_cours':
+        // sample active order for UI preview
+        this.activeOrder = {
+          id: 'ord_demo_0001',
+          fournisseur: 'La Bonne Pizza',
+          montant_total: 18.1,
+          statut: 'en_livraison',
+          date_commande: new Date().toISOString(),
+          produits: [
+            { produit_id: 'p1', nom: 'Pizza Margherita', quantite: 1, prix_unitaire: 9.5 },
+            { produit_id: 'p2', nom: 'Coca-Cola', quantite: 2, prix_unitaire: 1.8 }
+          ],
+          frais_service: 0.9,
+          frais_livraison: 1.0
+        } as Order;
+
+        this.driverLocation = { lat: 36.8065, lng: 10.1815 };
+        this.etaMinutes = 12;
+        this.driverETA = 12;
+        this.selectedLivreur = {
+          id: 'liv_demo_1', utilisateur_id: 'u_liv_1', nom_complet: 'Amine Ben Ali', email: 'amine@example.com', telephone: '+21612345678',
+          type_vehicule: 'Moto', photo_profil: '', note_moyenne: 4.8, nombre_livraisons: 120, tarif_par_km: 0.5, zones_livraison: ['Tunis']
+        };
+        break;
+
+      case 'historique':
+        // demo past orders
+        this.orders = [
+          { id: 'ord_1001', fournisseur: 'Le Bistrot', montant_total: 25.0, statut: 'livree', date_commande: new Date(Date.now() - 86400000).toISOString() } as Order,
+          { id: 'ord_1002', fournisseur: 'Sushi House', montant_total: 18.5, statut: 'livree', date_commande: new Date(Date.now() - 172800000).toISOString() } as Order
+        ];
+        break;
+
+      case 'recommandations':
+        this.recommendedSuppliers = [
+          { id: 's1', nom_entreprise: 'La Bonne Pizza', type_fournisseur: 'Pizzeria', temps_preparation_moyen: 20, frais_livraison: 2},
+          { id: 's2', nom_entreprise: 'Chez Sami', type_fournisseur: 'Tunisien', temps_preparation_moyen: 30, frais_livraison: 1.5}
+        ];
+        this.promotions = [ { id: 'promo1', titre: 'Réduction 20%', description: 'Sur toutes les pizzas', code: 'PIZZA20' } ];
+        break;
+
+      case 'preferences':
+        this.selectedAllergens = ['Gluten'];
+        this.selectedDietary = ['Végétarien'];
+        this.preferencesForm.patchValue({ horaires_preferes: '12:00-14:00', notifications_email: true, notifications_push: true });
+        break;
+
+      case 'portefeuille':
+        this.walletBalance = 42.5;
+        this.paymentHistory = [
+          { description: 'Recharge portefeuille', date: new Date().toISOString(), montant: 20 },
+          { description: 'Commande #ord_1001', date: new Date(Date.now() - 86400000).toISOString(), montant: -25 }
+        ];
+        break;
+
+      case 'support':
+        this.tickets = [
+          { id: 't1', sujet: 'Commande en retard', message: 'Ma commande est en retard de 20 min', statut: 'ouvert', date_creation: new Date().toISOString() }
+        ];
+        this.chatMessages = [
+          { from: 'client', message: 'Bonjour, ma commande ?', at: new Date() },
+          { from: 'support', message: 'Bonjour, nous vérifions avec le livreur.', at: new Date() }
+        ];
+        break;
+
+      case 'fidelite':
+        this.loyalty = { level: 'Argent', points: 320, nextLevel: 'Or', pointsNeeded: 500, progress: 64 };
+        this.rewards = [ { id: 'r1', nom: 'Réduction 10%', points: 100 }, { id: 'r2', nom: 'Livraison gratuite', points: 200 } ];
+        this.pointsHistory = [ { date: new Date().toISOString(), points: 50, description: 'Commande #ord_1002' } ];
+        break;
+
+      case 'notifications':
+        this.notifications = [
+          { id: 'n1', titre: 'Livraison en route', message: 'Votre commande est en route', lu: false, date_creation: new Date().toISOString() } as any,
+          { id: 'n2', titre: 'Promo', message: 'Livraison gratuite ce week-end', lu: true, date_creation: new Date().toISOString() } as any
+        ];
+        this.unreadCount = this.notifications.filter(n => !(n as any).lu).length;
+        break;
+
+      case 'parametres':
+        const user = this.auth.currentUserValue as User | null || {}; 
+        this.settingsForm.patchValue({ nom_complet: user.nom_complet || 'Client Demo', telephone: user.telephone || '+21600000000', email: user.email || 'demo@example.com' });
+        break;
+
+      default:
+        break;
+    }
+
+    // force change detection after demo data change
     this.cdr.markForCheck();
   }
 
@@ -324,7 +506,7 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
       next: (res) => {
         if (res?.success) {
           this.toast.showToast('Photo de profil mise à jour', 'success');
-          this.currentUser = this.auth.currentUserValue;
+          this.currentUser = this.auth.currentUserValue as User | null;
           this.cdr.markForCheck();
         }
       },
@@ -378,6 +560,8 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
         lng: 4.835659 + (Math.random() - 0.5) * 0.01
       };
       this.etaMinutes = Math.floor(Math.random() * 20) + 5;
+      this.driverETA = this.etaMinutes;
+      this.cdr.markForCheck();
     }
   }
 
@@ -475,11 +659,235 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
       this.toast.showToast('Votre panier est vide.', 'info');
       return;
     }
+    // Start checkout flow
+    this.checkoutStep = 'address';
+    this.cdr.markForCheck();
+  }
+
+  // === CHECKOUT FLOW ===
+
+  /**
+   * Step 1: Confirm address selection and gouvernorat
+   */
+  proceedFromAddress(): void {
     if (!this.selectedAddressId) {
       this.toast.showToast('Sélectionnez une adresse.', 'warning');
       return;
     }
-    this.searchDeliveryOptions();
+
+    if (!this.selectedGouvernorat) {
+      this.toast.showToast('Sélectionnez un gouvernorat.', 'warning');
+      return;
+    }
+
+    // Extract city from selected address
+    const addr = this.addresses.find(a => a.id === this.selectedAddressId);
+    if (!addr) {
+      this.toast.showToast('Adresse non trouvée.', 'error');
+      return;
+    }
+
+    this.cartCity = addr.ville;
+    this.checkoutStep = 'payment';
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Step 2: Validate payment method
+   */
+  proceedFromPayment(): void {
+    if (this.paymentChoice === 'carte') {
+      if (!this.isCardValid()) {
+        this.toast.showToast('Veuillez remplir les informations de carte valides.', 'warning');
+        return;
+      }
+    }
+    
+    // Get delivery estimate and list available livreurs
+    this.loadDeliveryEstimateAndLivreurs();
+    this.checkoutStep = 'livreur';
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Step 3: Select delivery option and proceed
+   */
+  proceedFromLivreur(): void {
+    if (!this.selectedLivreur) {
+      this.toast.showToast('Sélectionnez un livreur.', 'warning');
+      return;
+    }
+
+    this.calculateOrderSummary();
+    this.checkoutStep = 'summary';
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Step 4: Place order
+   */
+  confirmOrder(): void {
+    if (!this.selectedAddressId || !this.selectedLivreur) {
+      this.toast.showToast('Données manquantes.', 'error');
+      return;
+    }
+
+    // Build order payload
+    const orderPayload = {
+      adresse_livraison_id: this.selectedAddressId,
+      livreur_id: this.selectedLivreur.id,
+      mode_paiement: this.paymentChoice,
+      montant_livraison: this.orderSummary.fraisLivraison,
+      instructions_speciales: '',
+      // produits would be passed from parent/cart service
+    };
+
+    this.http
+      .post<any>(`${this.apiUrl}/commandes`, orderPayload, this.auth.getAuthHeaders())
+      .pipe(catchError(err => {
+        this.toast.showToast(`Erreur: ${err.error?.message || 'Création commande échouée'}`, 'error');
+        return of({ success: false });
+      }))
+      .subscribe(res => {
+        if (res?.success) {
+          // Show confirmation waiting state
+          this.lastConfirmedOrderId = res.commandeId;
+          this.orderConfirmationState = 'waiting';
+          this.confirmationMessage = 'En attente de confirmation du livreur...';
+          this.cdr.markForCheck();
+          
+          // Poll for confirmation every 3 seconds (max 5 minutes)
+          this.pollForConfirmation();
+        }
+      });
+  }
+
+  /**
+   * Poll for order confirmation from driver
+   */
+  private pollForConfirmation(): void {
+    let pollCount = 0;
+    const maxPolls = 100; // 5 minutes
+
+    const pollInterval = setInterval(() => {
+      if (pollCount >= maxPolls || this.orderConfirmationState !== 'waiting') {
+        clearInterval(pollInterval);
+        return;
+      }
+
+      this.http
+        .get<any>(`${this.apiUrl}/commandes/${this.lastConfirmedOrderId}`, this.auth.getAuthHeaders())
+        .pipe(catchError(() => of({ success: false })))
+        .subscribe(res => {
+          if (res?.success && res.data?.statut !== 'en_attente_confirmation') {
+            clearInterval(pollInterval);
+            this.orderConfirmationState = 'confirmed';
+            this.confirmationMessage = `Le livreur a confirmé! Temps estimé: ${res.data?.temps_estime_livreur || '30'} minutes`;
+            this.toast.showToast('Commande confirmée par le livreur!', 'success');
+            this.cdr.markForCheck();
+            
+            // Auto-switch to tracking after 3 seconds
+            setTimeout(() => {
+              this.resetCheckout();
+              this.loadOrders();
+              this.activeTab = 'commande_en_cours';
+            }, 3000);
+          }
+          pollCount++;
+        });
+    }, 3000);
+  }
+
+  /**
+   * Load delivery estimate and available livreurs
+   */
+  private loadDeliveryEstimateAndLivreurs(): void {
+    // 1. Estimate delivery
+    this.http
+      .post<any>(`${this.apiUrl}/commandes/estimer-livraison`, 
+        { gouvernorat: this.selectedGouvernorat }, 
+        this.auth.getAuthHeaders())
+      .pipe(
+        catchError(() => of({ success: false, data: { distance_km: 20, temps_estime_minutes: 30 } }))
+      )
+      .subscribe(res => {
+        if (res?.success) {
+          this.deliveryEstimate = res.data;
+        }
+      });
+
+    // 2. Get available livreurs
+    const params = new HttpParams().set('gouvernorat', this.selectedGouvernorat || '');
+    this.http
+      .get<any>(`${this.apiUrl}/commandes/livreurs-disponibles`, {
+        ...this.auth.getAuthHeaders(),
+        params
+      })
+      .pipe(
+        catchError(() => of({ success: false, data: [] }))
+      )
+      .subscribe(res => {
+        if (res?.success) {
+          this.availableLivreurs = res.data;
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  /**
+   * Select a livreur and calculate delivery cost
+   */
+  selectLivreur(livreur: Livreur): void {
+    this.selectedLivreur = livreur;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Calculate final order summary
+   */
+  private calculateOrderSummary(): void {
+    this.orderSummary.sousTotal = this.cartTotal();
+    this.orderSummary.fraisService = Math.round(this.orderSummary.sousTotal * 0.05 * 100) / 100;
+    
+    // Delivery cost = distance * tarif_par_km
+    if (this.selectedLivreur && this.deliveryEstimate) {
+      this.orderSummary.fraisLivraison = 
+        Math.round(this.deliveryEstimate.distance_km * this.selectedLivreur.tarif_par_km * 100) / 100;
+    } else {
+      this.orderSummary.fraisLivraison = 0;
+    }
+
+    this.orderSummary.total = 
+      this.orderSummary.sousTotal + this.orderSummary.fraisService + this.orderSummary.fraisLivraison;
+  }
+
+  /**
+   * Card validation helper
+   */
+  isCardValid(): boolean {
+    const { numero, titulaire, expiration, cvv } = this.cardInfo;
+    return !!(numero && numero.length >= 13 && titulaire && expiration && cvv);
+  }
+
+  /**
+   * Get selected address
+   */
+  getSelectedAddress(): Address | undefined {
+    return this.addresses.find(a => a.id === this.selectedAddressId);
+  }
+
+  /**
+   * Reset checkout state
+   */
+  private resetCheckout(): void {
+    this.checkoutStep = 'address';
+    this.selectedAddressId = null;
+    this.selectedLivreur = null;
+    this.deliveryEstimate = null;
+    this.cartCity = '';
+    this.cardInfo = { numero: '', titulaire: '', expiration: '', cvv: '' };
+    this.availableLivreurs = [];
+    this.cdr.markForCheck();
   }
 
   private searchDeliveryOptions(): void {
@@ -721,7 +1129,7 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
 
   // ---------- Settings ----------
   loadSettings(): void {
-    const user = this.auth.currentUserValue;
+    const user = this.auth.currentUserValue as User | null;
     if (user) {
       this.settingsForm.patchValue({
         nom_complet: user.nom_complet || '',
@@ -752,7 +1160,7 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
     this.auth.updateProfile(payload).subscribe({
       next: () => {
         this.toast.showToast('Paramètres sauvegardés', 'success');
-        this.currentUser = this.auth.currentUserValue;
+        this.currentUser = this.auth.currentUserValue as User | null;
         this.cdr.markForCheck();
       },
       error: () => this.toast.showToast('Erreur sauvegarde', 'error')
@@ -775,4 +1183,3 @@ export class ClientDashboardComponent implements OnInit, OnDestroy {
     return (v || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
   }
 }
-

@@ -36,6 +36,7 @@ interface Livreur {
   id: string;
   nom_complet: string;
   email: string;
+  photo_profil?: string;
   telephone?: string;
   statut: string;
   type_vehicule?: string;
@@ -148,7 +149,7 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
 
   // Gestion des livreurs
   livreurs: Livreur[] = [];
-  livreursEnAttente: LivreurDetails[] = [];
+  livreursEnAttenteList: LivreurDetails[] = [];
   livreursFilter: 'all' | 'pending' | 'active' | 'suspended' = 'all';
   selectedLivreur: Livreur | null = null;
   selectedLivreurEnAttente: LivreurDetails | null = null;
@@ -269,7 +270,7 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (response) => {
         if (response.success && response.data) {
-          this.stats.livreursEnAttente = response.data.filter(l => l.statut === 'en_attente').length;
+          this.stats.livreursEnAttente = response.data.filter(l => l.statut === 'verifie').length;
           this.stats.livreursActifs = response.data.filter(l => l.statut === 'actif').length;
           this.stats.livreursSuspendus = response.data.filter(l => l.statut === 'suspendu').length;
         }
@@ -310,7 +311,7 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
   get filteredLivreurs(): Livreur[] {
     if (this.livreursFilter === 'all') return this.livreurs;
     return this.livreurs.filter(l => {
-      if (this.livreursFilter === 'pending') return l.statut === 'en_attente';
+      if (this.livreursFilter === 'pending') return l.statut === 'verifie';
       if (this.livreursFilter === 'active') return l.statut === 'actif';
       if (this.livreursFilter === 'suspended') return l.statut === 'suspendu';
       return true;
@@ -353,19 +354,28 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
 
   // ========== GESTION DES LIVREURS EN ATTENTE ==========
   loadLivreursEnAttente(): void {
-    this.livreurVerificationService.getPendingLivreurs().subscribe({
-      next: (response) => {
-        if (response.success) {
-          this.livreursEnAttente = response.data || [];
-          this.stats.livreursEnAttente = this.livreursEnAttente.length;
-        }
-      },
-      error: (err) => {
-        console.error('Error loading pending livreurs:', err);
-        this.toast.showToast('Erreur lors du chargement des livreurs en attente', 'error');
+  this.livreurVerificationService.getPendingLivreurs().subscribe({
+    next: (response) => {
+      if (response.success) {
+        // Map pour garantir que chaque objet a bien un statut (string)
+        this.livreursEnAttenteList = (response.data || []).map(l => ({
+          // si votre interface LivreurDetails possède d'autres champs,
+          // on les propage (spread) puis on force statut à une string
+          ...l,
+          statut: l.statut ?? 'verifie',
+          documents: l.documents ?? []
+        })) as LivreurDetails[];
+
+        this.stats.livreursEnAttente = this.livreursEnAttenteList.length;
       }
-    });
-  }
+    },
+    error: (err) => {
+      console.error('Error loading pending livreurs:', err);
+      this.toast.showToast('Erreur lors du chargement des livreurs en attente', 'error');
+    }
+  });
+}
+
 
   viewLivreurDetails(livreur: LivreurDetails): void {
     this.selectedLivreurEnAttente = livreur;

@@ -132,7 +132,7 @@
         <label>Nom*<input formControlName="nom" placeholder="Pizza 4 fromages" /></label>
         <label>Description<textarea formControlName="description" rows="3"></textarea></label>
         <div class="grid-2">
-          <label>Prix*<input type="number" step="0.1" formControlName="prix" /></label>
+          <label>Prix*<input type="number" step="0.1" formControlName="prix" /></label><br>
           <label>Quantité*<input type="number" formControlName="quantite" /></label>
         </div>
         <div class="grid-2">
@@ -141,7 +141,7 @@
               <option value="" disabled>Choisir</option>
               <option *ngFor="let c of categories" [value]="c.id">{{ c.name }}</option>
             </select>
-          </label>
+          </label><br>
           <label>Promo (%)<input type="number" formControlName="promotionPercent" /></label>
         </div>
         <label class="checkbox">
@@ -150,7 +150,7 @@
 
         <div class="grid-2">
           <label>Image principale*<input type="file" (change)="onMainImageSelected($event)" [required]="!produitEdition" /></label>
-          <label>Images optionnelles<input type="file" multiple (change)="onAdditionalImagesSelected($event)" /></label>
+          <br><label>Images optionnelles<input type="file" multiple (change)="onAdditionalImagesSelected($event)" /></label>
         </div>
 
         <div class="actions">
