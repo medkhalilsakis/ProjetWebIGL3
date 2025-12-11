@@ -1,0 +1,953 @@
+<!-- index.html: garder ceci -->
+<!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"> -->
+
+<header class="main-header">
+  <div class="container">
+    <div class="logo-section" (click)="goHome()">
+      <i class="fa-solid fa-truck logo-icon" aria-hidden="true"></i>
+      <span class="logo-text">Livra<span class="logo-highlight">Xpress</span></span>
+    </div>
+
+    <nav class="main-nav">
+      <a routerLink="/" class="nav-item">Accueil</a>
+      <a routerLink="/produits" class="nav-item">Produits</a>
+      <a routerLink="/cities" class="nav-item">Villes</a>
+      <a routerLink="/contact" class="nav-item">Contact</a>
+    </nav>
+
+    <div class="auth-buttons">
+      <button mat-stroked-button class="signin-btn" (click)="goHome()">Retour</button>
+      <button mat-raised-button class="signup-btn" (click)="logout()">Déconnexion</button>
+    </div>
+  </div>
+</header>
+
+<div class="admin-dashboard">
+  <!-- Header -->
+  <header class="dashboard-header">
+    <div class="header-content">
+      <div class="header-left">
+        <h1>
+          <i class="fa-solid fa-shield-alt" aria-hidden="true"></i>
+          Dashboard Administrateur
+        </h1>
+        <p class="subtitle">Gestion de la plateforme LivraXpress</p>
+      </div>
+      <div class="header-right">
+        <a routerLink="/admin/add-admin" class="btn btn-outline" style="text-decoration: none; margin-right: 12px;">
+          <i class="fa-solid fa-user-plus" aria-hidden="true"></i> Ajouter Admin
+        </a>
+        <div class="notifications-badge" *ngIf="unreadCount > 0">
+          <i class="fa-solid fa-bell" aria-hidden="true"></i>
+          <span class="badge-count">{{ unreadCount }}</span>
+        </div>
+        <button class="btn btn-outline" (click)="logout()">
+          <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Déconnexion
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="dashboard-nav">
+    <button
+      class="nav-tab"
+      [class.active]="activeTab === 'overview'"
+      (click)="setActiveTab('overview')">
+      <i class="fa-solid fa-home" aria-hidden="true"></i> Vue d'ensemble
+    </button>
+    <button
+      class="nav-tab"
+      [class.active]="activeTab === 'livreurs'"
+      (click)="setActiveTab('livreurs')">
+      <i class="fa-solid fa-truck" aria-hidden="true"></i> Livreurs
+      <span class="badge" *ngIf="stats.livreursEnAttente > 0">{{ stats.livreursEnAttente }}</span>
+    </button>
+    <button
+      class="nav-tab"
+      [class.active]="activeTab === 'fournisseurs'"
+      (click)="setActiveTab('fournisseurs')">
+      <i class="fa-solid fa-store" aria-hidden="true"></i> Fournisseurs
+    </button>
+    <button
+      class="nav-tab"
+      [class.active]="activeTab === 'clients'"
+      (click)="setActiveTab('clients')">
+      <i class="fa-solid fa-users" aria-hidden="true"></i> Clients
+    </button>
+    <button
+      class="nav-tab"
+      [class.active]="activeTab === 'commandes'"
+      (click)="setActiveTab('commandes')">
+      <i class="fa-solid fa-shopping-cart" aria-hidden="true"></i> Commandes
+    </button>
+    <button
+      class="nav-tab"
+      [class.active]="activeTab === 'paiements'"
+      (click)="setActiveTab('paiements')">
+      <i class="fa-solid fa-credit-card" aria-hidden="true"></i> Paiements
+    </button>
+    <button
+      class="nav-tab"
+      [class.active]="activeTab === 'support'"
+      (click)="setActiveTab('support')">
+      <i class="fa-solid fa-question-circle" aria-hidden="true"></i> Support
+    </button>
+    <button
+      class="nav-tab"
+      [class.active]="activeTab === 'rapports'"
+      (click)="setActiveTab('rapports')">
+      <i class="fa-solid fa-chart-bar" aria-hidden="true"></i> Rapports
+    </button>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="dashboard-content">
+    <!-- Loading State -->
+    <div *ngIf="loading" class="loading-overlay">
+      <div class="spinner"></div>
+      <p>Chargement des données...</p>
+    </div>
+
+    <!-- Vue d'ensemble -->
+    <section *ngIf="activeTab === 'overview'" class="tab-content">
+      <div class="section-header">
+        <h2>Vue d'ensemble</h2>
+        <div class="period-selector">
+          <button 
+            class="btn btn-sm" 
+            [class.active]="statsPeriod === 'jour'"
+            (click)="statsPeriod = 'jour'">Jour</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="statsPeriod === 'semaine'"
+            (click)="statsPeriod = 'semaine'">Semaine</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="statsPeriod === 'mois'"
+            (click)="statsPeriod = 'mois'">Mois</button>
+        </div>
+      </div>
+
+      <!-- Stats Cards -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon livreurs">
+            <i class="fa-solid fa-truck" aria-hidden="true"></i>
+          </div>
+          <div class="stat-content">
+            <h3>{{ stats.totalLivreurs }}</h3>
+            <p>Total Livreurs</p>
+            <div class="stat-details">
+              <span class="badge badge-success">{{ stats.livreursActifs }} Actifs</span>
+              <span class="badge badge-warning">{{ stats.livreursEnAttente }} En attente</span>
+              <span class="badge badge-danger">{{ stats.livreursSuspendus }} Suspendus</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon commandes">
+            <i class="fa-solid fa-shopping-cart" aria-hidden="true"></i>
+          </div>
+          <div class="stat-content">
+            <h3>{{ stats.commandesEnCours }}</h3>
+            <p>Commandes en cours</p>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon revenus">
+            <i class="fa-solid fa-dollar-sign" aria-hidden="true"></i>
+          </div>
+          <div class="stat-content">
+            <h3>{{ formatCurrency(stats.revenusTotaux) }}</h3>
+            <p>Revenus totaux</p>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon fournisseurs">
+            <i class="fa-solid fa-store" aria-hidden="true"></i>
+          </div>
+          <div class="stat-content">
+            <h3>{{ stats.totalFournisseurs }}</h3>
+            <p>Fournisseurs</p>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon clients">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+          </div>
+          <div class="stat-content">
+            <h3>{{ stats.totalClients }}</h3>
+            <p>Clients</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Performance Stats -->
+      <div class="performance-section">
+        <h3>Statistiques de performance</h3>
+        <div class="performance-grid">
+          <div class="performance-card">
+            <h4>Commandes</h4>
+            <p class="big-number">{{ stats.statsJour.commandes }}</p>
+            <p class="period-label">Aujourd'hui</p>
+          </div>
+          <div class="performance-card">
+            <h4>Revenus</h4>
+            <p class="big-number">{{ formatCurrency(stats.statsJour.revenus) }}</p>
+            <p class="period-label">Aujourd'hui</p>
+          </div>
+          <div class="performance-card">
+            <h4>Taux de livraison</h4>
+            <p class="big-number">{{ stats.statsJour.tauxLivraison }}%</p>
+            <p class="period-label">Aujourd'hui</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Gestion des Livreurs -->
+    <section *ngIf="activeTab === 'livreurs'" class="tab-content">
+      <!-- Section: Livreurs en attente de vérification -->
+      <div *ngIf="livreursEnAttenteList.length > 0" class="pending-livreurs-section">
+        <div class="section-header alert-section">
+            <h2>
+            <i class="fa-solid fa-exclamation-circle" aria-hidden="true"></i>
+            Livreurs en attente de vérification
+              <span class="badge badge-warning">{{ livreursEnAttenteList.length }}</span>
+          </h2>
+          <p class="subtitle">Veuillez vérifier les documents et accepter ou rejeter les nouveaux livreurs</p>
+        </div>
+
+        <div class="pending-cards-grid">
+          <div *ngFor="let livreur of livreursEnAttenteList" class="pending-card">
+            <div class="card-header">
+              <div class="livreur-info">
+                <img 
+                  *ngIf="livreur.photo_profil" 
+                  [src]="livreur.photo_profil" 
+                  class="avatar"
+                  alt="{{ livreur.nom_complet }}">
+                <div *ngIf="!livreur.photo_profil" class="avatar-placeholder">
+                  <i class="fa-solid fa-user" aria-hidden="true"></i>
+                </div>
+                <div>
+                  <h3>{{ livreur.nom_complet }}</h3>
+                  <p class="email">{{ livreur.email }}</p>
+                </div>
+              </div>
+              <span class="badge badge-warning">En attente</span>
+            </div>
+
+            <div class="card-body">
+              <div class="info-row">
+                <span class="label">Téléphone:</span>
+                <span class="value">{{ livreur.telephone || '-' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Type véhicule:</span>
+                <span class="value">{{ livreur.type_vehicule || '-' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">N° Permis:</span>
+                <span class="value">{{ livreur.numero_permis || '-' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Date inscription:</span>
+                <span class="value">{{ formatDate(livreur.date_creation) }}</span>
+              </div>
+
+              <!-- Documents -->
+              <div class="documents-section" *ngIf="livreur.documents && livreur.documents.length > 0">
+                <h4>Documents uploadés:</h4>
+                <div class="documents-list">
+                  <div *ngFor="let doc of livreur.documents" class="doc-item">
+                    <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+                    <div class="doc-info">
+                      <p class="doc-type">{{ doc.type_document === 'permis' ? 'Permis de conduire' : 'Carte d\'identité' }}</p>
+                      <p class="doc-date">{{ formatDate(doc.date_upload) }}</p>
+                    </div>
+                    <a 
+                      [href]="getDocumentUrl(doc.chemin_fichier)" 
+                      target="_blank" 
+                      class="btn btn-sm btn-outline"
+                      title="Télécharger">
+                      <i class="fa-solid fa-download" aria-hidden="true"></i> Voir
+                    </a>
+                  </div>
+                </div>
+              </div>
+              <div *ngIf="!livreur.documents || livreur.documents.length === 0" class="alert alert-warning">
+                Aucun document uploadé
+              </div>
+            </div>
+
+            <div class="card-footer">
+              <button 
+                class="btn btn-sm btn-success"
+                (click)="accepterLivreur(livreur.livreur_id || livreur.id)"
+                [disabled]="acceptRejectLoading">
+                <i class="fa-solid fa-check" aria-hidden="true"></i>
+                Accepter
+              </button>
+              <button 
+                class="btn btn-sm btn-danger"
+                (click)="viewLivreurDetails(livreur)"
+                [disabled]="acceptRejectLoading">
+                <i class="fa-solid fa-times" aria-hidden="true"></i>
+                Rejeter
+              </button>
+              <button 
+                class="btn btn-sm btn-outline"
+                (click)="viewLivreurDetails(livreur)">
+                <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                Détails
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ligne de séparation -->
+      <hr *ngIf="livreursEnAttenteList.length > 0" class="section-divider">
+
+      <div class="section-header">
+        <h2>Gestion des Livreurs</h2>
+        <div class="filter-buttons">
+          <button 
+            class="btn btn-sm" 
+            [class.active]="livreursFilter === 'all'"
+            (click)="livreursFilter = 'all'">Tous</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="livreursFilter === 'pending'"
+            (click)="livreursFilter = 'pending'">En attente</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="livreursFilter === 'active'"
+            (click)="livreursFilter = 'active'">Actifs</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="livreursFilter === 'suspended'"
+            (click)="livreursFilter = 'suspended'">Suspendus</button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Email</th>
+              <th>Téléphone</th>
+              <th>Véhicule</th>
+              <th>Permis</th>
+              <th>Note</th>
+              <th>Livraisons</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let livreur of filteredLivreurs">
+              <td>{{ livreur.nom_complet }}</td>
+              <td>{{ livreur.email }}</td>
+              <td>{{ livreur.telephone || '-' }}</td>
+              <td>{{ livreur.type_vehicule || '-' }}</td>
+              <td>{{ livreur.numero_permis || '-' }}</td>
+              <td>
+                <span *ngIf="livreur.note_moyenne" class="rating">
+                  <i class="fa-solid fa-star" aria-hidden="true"></i> {{ livreur.note_moyenne.toFixed(1) }}
+                </span>
+                <span *ngIf="!livreur.note_moyenne">-</span>
+              </td>
+              <td>{{ livreur.nombre_livraisons || 0 }}</td>
+              <td>
+                <span class="badge" [ngClass]="getStatusBadge(livreur.statut)">
+                  {{ getStatusLabel(livreur.statut) }}
+                </span>
+              </td>
+              <td>
+                <button class="btn btn-sm btn-primary" (click)="viewLivreur(livreur)">
+                  <i class="fa-solid fa-eye" aria-hidden="true"></i> Voir
+                </button>
+              </td>
+            </tr>
+            <tr *ngIf="filteredLivreurs.length === 0">
+              <td colspan="9" class="empty-state">Aucun livreur trouvé</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Gestion des Fournisseurs -->
+    <section *ngIf="activeTab === 'fournisseurs'" class="tab-content">
+      <div class="section-header">
+        <h2>Gestion des Fournisseurs</h2>
+        <div class="filter-buttons">
+          <button 
+            class="btn btn-sm" 
+            [class.active]="fournisseursFilter === 'all'"
+            (click)="fournisseursFilter = 'all'">Tous</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="fournisseursFilter === 'active'"
+            (click)="fournisseursFilter = 'active'">Actifs</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="fournisseursFilter === 'suspended'"
+            (click)="fournisseursFilter = 'suspended'">Suspendus</button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Email</th>
+              <th>Entreprise</th>
+              <th>Type</th>
+              <th>Statut</th>
+              <th>Date création</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let fournisseur of filteredFournisseurs">
+              <td>{{ fournisseur.nom_complet }}</td>
+              <td>{{ fournisseur.email }}</td>
+              <td>{{ fournisseur.nom_entreprise }}</td>
+              <td>{{ fournisseur.type_fournisseur }}</td>
+              <td>
+                <span class="badge" [ngClass]="getStatusBadge(fournisseur.statut)">
+                  {{ getStatusLabel(fournisseur.statut) }}
+                </span>
+              </td>
+              <td>{{ formatDate(fournisseur.date_creation) }}</td>
+              <td>
+                <button 
+                  *ngIf="fournisseur.statut === 'suspendu'"
+                  class="btn btn-sm btn-success" 
+                  (click)="updateFournisseurStatus(fournisseur.id, 'actif')">
+                  Activer
+                </button>
+                <button 
+                  *ngIf="fournisseur.statut === 'actif'"
+                  class="btn btn-sm btn-danger" 
+                  (click)="updateFournisseurStatus(fournisseur.id, 'suspendu')">
+                  Suspendre
+                </button>
+              </td>
+            </tr>
+            <tr *ngIf="filteredFournisseurs.length === 0">
+              <td colspan="7" class="empty-state">Aucun fournisseur trouvé</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Gestion des Clients -->
+    <section *ngIf="activeTab === 'clients'" class="tab-content">
+      <div class="section-header">
+        <h2>Gestion des Clients</h2>
+        <div class="filter-buttons">
+          <button 
+            class="btn btn-sm" 
+            [class.active]="clientsFilter === 'all'"
+            (click)="clientsFilter = 'all'">Tous</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="clientsFilter === 'active'"
+            (click)="clientsFilter = 'active'">Actifs</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="clientsFilter === 'suspended'"
+            (click)="clientsFilter = 'suspended'">Suspendus</button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Email</th>
+              <th>Téléphone</th>
+              <th>Statut</th>
+              <th>Date création</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let client of filteredClients">
+              <td>{{ client.nom_complet }}</td>
+              <td>{{ client.email }}</td>
+              <td>{{ client.telephone || '-' }}</td>
+              <td>
+                <span class="badge" [ngClass]="getStatusBadge(client.statut)">
+                  {{ getStatusLabel(client.statut) }}
+                </span>
+              </td>
+              <td>{{ formatDate(client.date_creation) }}</td>
+              <td>
+                <button 
+                  *ngIf="client.statut === 'suspendu'"
+                  class="btn btn-sm btn-success" 
+                  (click)="updateClientStatus(client.id, 'actif')">
+                  Activer
+                </button>
+                <button 
+                  *ngIf="client.statut === 'actif'"
+                  class="btn btn-sm btn-danger" 
+                  (click)="updateClientStatus(client.id, 'suspendu')">
+                  Suspendre
+                </button>
+              </td>
+            </tr>
+            <tr *ngIf="filteredClients.length === 0">
+              <td colspan="6" class="empty-state">Aucun client trouvé</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Gestion des Commandes -->
+    <section *ngIf="activeTab === 'commandes'" class="tab-content">
+      <div class="section-header">
+        <h2>Gestion des Commandes</h2>
+        <div class="filter-buttons">
+          <button 
+            class="btn btn-sm" 
+            [class.active]="commandesFilter === 'all'"
+            (click)="commandesFilter = 'all'; loadCommandes()">Toutes</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="commandesFilter === 'en_cours'"
+            (click)="commandesFilter = 'en_cours'; loadCommandes()">En cours</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="commandesFilter === 'livree'"
+            (click)="commandesFilter = 'livree'; loadCommandes()">Livrées</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="commandesFilter === 'annulee'"
+            (click)="commandesFilter = 'annulee'; loadCommandes()">Annulées</button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>N° Suivi</th>
+              <th>Client</th>
+              <th>Fournisseur</th>
+              <th>Montant</th>
+              <th>Statut</th>
+              <th>Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let commande of filteredCommandes">
+              <td>{{ commande.numero_suivi }}</td>
+              <td>{{ commande.client_nom || '-' }}</td>
+              <td>{{ commande.fournisseur || '-' }}</td>
+              <td>{{ formatCurrency(commande.montant_total) }}</td>
+              <td>
+                <span class="badge" [ngClass]="getStatusBadge(commande.statut)">
+                  {{ getStatusLabel(commande.statut) }}
+                </span>
+              </td>
+              <td>{{ formatDate(commande.date_commande) }}</td>
+              <td>
+                <button class="btn btn-sm btn-primary" (click)="viewCommande(commande)">
+                  <i class="fa-solid fa-eye" aria-hidden="true"></i> Détails
+                </button>
+              </td>
+            </tr>
+            <tr *ngIf="filteredCommandes.length === 0">
+              <td colspan="7" class="empty-state">Aucune commande trouvée</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Gestion des Paiements -->
+    <section *ngIf="activeTab === 'paiements'" class="tab-content">
+      <div class="section-header">
+        <h2>Gestion des Paiements & Revenus</h2>
+      </div>
+
+      <div class="revenue-cards">
+        <div class="revenue-card">
+          <h3>Revenus Total</h3>
+          <p class="big-amount">{{ formatCurrency(revenusTotal) }}</p>
+        </div>
+        <div class="revenue-card">
+          <h3>Ce mois</h3>
+          <p class="big-amount">{{ formatCurrency(revenusMois) }}</p>
+        </div>
+        <div class="revenue-card">
+          <h3>Cette semaine</h3>
+          <p class="big-amount">{{ formatCurrency(revenusSemaine) }}</p>
+        </div>
+        <div class="revenue-card">
+          <h3>Aujourd'hui</h3>
+          <p class="big-amount">{{ formatCurrency(revenusJour) }}</p>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <h3>Historique des Paiements</h3>
+        <div class="filter-buttons">
+          <button 
+            class="btn btn-sm" 
+            [class.active]="paiementsFilter === 'all'"
+            (click)="paiementsFilter = 'all'">Tous</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="paiementsFilter === 'paye'"
+            (click)="paiementsFilter = 'paye'">Payés</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="paiementsFilter === 'en_attente'"
+            (click)="paiementsFilter = 'en_attente'">En attente</button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID Commande</th>
+              <th>Montant</th>
+              <th>Mode</th>
+              <th>Statut</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let paiement of paiements">
+              <td>{{ paiement.commande_id }}</td>
+              <td>{{ formatCurrency(paiement.montant) }}</td>
+              <td>{{ paiement.mode_paiement }}</td>
+              <td>
+                <span class="badge" [ngClass]="getStatusBadge(paiement.statut)">
+                  {{ paiement.statut }}
+                </span>
+              </td>
+              <td>{{ formatDate(paiement.date_creation) }}</td>
+            </tr>
+            <tr *ngIf="paiements.length === 0">
+              <td colspan="5" class="empty-state">Aucun paiement trouvé</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Centre de Support -->
+    <section *ngIf="activeTab === 'support'" class="tab-content">
+      <div class="section-header">
+        <h2>Centre de Support</h2>
+        <div class="filter-buttons">
+          <button 
+            class="btn btn-sm" 
+            [class.active]="ticketsFilter === 'all'"
+            (click)="ticketsFilter = 'all'">Tous</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="ticketsFilter === 'ouvert'"
+            (click)="ticketsFilter = 'ouvert'">Ouverts</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="ticketsFilter === 'en_cours'"
+            (click)="ticketsFilter = 'en_cours'">En cours</button>
+          <button 
+            class="btn btn-sm" 
+            [class.active]="ticketsFilter === 'resolu'"
+            (click)="ticketsFilter = 'resolu'">Résolus</button>
+        </div>
+      </div>
+
+      <div class="tickets-list">
+        <div *ngFor="let ticket of filteredTickets" class="ticket-card">
+          <div class="ticket-header">
+            <h4>{{ ticket.sujet }}</h4>
+            <span class="badge" [ngClass]="getStatusBadge(ticket.statut)">
+              {{ ticket.statut }}
+            </span>
+          </div>
+          <p class="ticket-message">{{ ticket.message }}</p>
+          <div class="ticket-footer">
+            <span>{{ formatDate(ticket.date_creation) }}</span>
+            <span class="priority" [ngClass]="'priority-' + ticket.priorite">
+              {{ ticket.priorite }}
+            </span>
+          </div>
+        </div>
+        <div *ngIf="filteredTickets.length === 0" class="empty-state">
+          Aucun ticket de support trouvé
+        </div>
+      </div>
+    </section>
+
+    <!-- Rapports & Analytique -->
+    <section *ngIf="activeTab === 'rapports'" class="tab-content">
+      <div class="section-header">
+        <h2>Rapports & Analytique Avancés</h2>
+        <div class="report-controls">
+          <select [(ngModel)]="reportType" class="form-control">
+            <option value="commandes">Commandes</option>
+            <option value="revenus">Revenus</option>
+            <option value="utilisateurs">Utilisateurs</option>
+            <option value="livreurs">Livreurs</option>
+          </select>
+          <select [(ngModel)]="reportPeriod" class="form-control">
+            <option value="jour">Jour</option>
+            <option value="semaine">Semaine</option>
+            <option value="mois">Mois</option>
+            <option value="annee">Année</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="reports-section">
+        <div class="report-placeholder">
+          <i class="fa-solid fa-chart-bar" aria-hidden="true"></i>
+          <h3>Graphiques et analyses</h3>
+          <p>Les graphiques détaillés seront affichés ici</p>
+          <p class="report-info">
+            Type: {{ reportType }} | Période: {{ reportPeriod }}
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal Livreur -->
+  <div *ngIf="showLivreurModal && selectedLivreur" class="modal-overlay" (click)="showLivreurModal = false">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Détails du Livreur</h3>
+        <button class="modal-close" (click)="showLivreurModal = false">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-row">
+          <strong>Nom:</strong> {{ selectedLivreur.nom_complet }}
+        </div>
+        <div class="detail-row">
+          <strong>Email:</strong> {{ selectedLivreur.email }}
+        </div>
+        <div class="detail-row">
+          <strong>Téléphone:</strong> {{ selectedLivreur.telephone || '-' }}
+        </div>
+        <div class="detail-row">
+          <strong>Véhicule:</strong> {{ selectedLivreur.type_vehicule || '-' }}
+        </div>
+        <div class="detail-row">
+          <strong>Permis:</strong> {{ selectedLivreur.numero_permis || '-' }}
+        </div>
+        <div class="detail-row">
+          <strong>Note moyenne:</strong> {{ selectedLivreur.note_moyenne ? selectedLivreur.note_moyenne.toFixed(1) : '-' }}
+        </div>
+        <div class="detail-row">
+          <strong>Livraisons:</strong> {{ selectedLivreur.nombre_livraisons || 0 }}
+        </div>
+        <div class="detail-row">
+          <strong>Statut:</strong>
+          <span class="badge" [ngClass]="getStatusBadge(selectedLivreur.statut)">
+            {{ getStatusLabel(selectedLivreur.statut) }}
+          </span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button
+          *ngIf="selectedLivreur.statut === 'en_attente'"
+          class="btn btn-success"
+          (click)="verifyLivreur(selectedLivreur.id)">
+          <i class="fa-solid fa-check" aria-hidden="true"></i> Valider
+        </button>
+        <button
+          *ngIf="selectedLivreur.statut === 'actif'"
+          class="btn btn-danger"
+          (click)="suspendLivreur(selectedLivreur.id)">
+          <i class="fa-solid fa-times" aria-hidden="true"></i> Suspendre
+        </button>
+        <button class="btn btn-outline" (click)="showLivreurModal = false">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Commande -->
+  <div *ngIf="showCommandeModal && selectedCommande" class="modal-overlay" (click)="showCommandeModal = false">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Détails de la Commande</h3>
+        <button class="modal-close" (click)="showCommandeModal = false">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="detail-row">
+          <strong>N° Suivi:</strong> {{ selectedCommande.numero_suivi }}
+        </div>
+        <div class="detail-row">
+          <strong>Montant:</strong> {{ formatCurrency(selectedCommande.montant_total) }}
+        </div>
+        <div class="detail-row">
+          <strong>Statut:</strong>
+          <span class="badge" [ngClass]="getStatusBadge(selectedCommande.statut)">
+            {{ getStatusLabel(selectedCommande.statut) }}
+          </span>
+        </div>
+        <div class="detail-row">
+          <strong>Date:</strong> {{ formatDate(selectedCommande.date_commande) }}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" (click)="showCommandeModal = false">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Modal: Détails Livreur en attente -->
+<div *ngIf="showLivreurDetailsModal && selectedLivreurEnAttente" class="modal-overlay" (click)="closeLivreurDetailsModal()">
+  <div class="modal-content large-modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Vérification du Livreur</h2>
+      <button class="close-btn" (click)="closeLivreurDetailsModal()">×</button>
+    </div>
+    
+    <div class="modal-body">
+      <div class="livreur-details-container">
+        <!-- Section: Informations personnelles -->
+        <div class="details-section">
+          <h3>
+            <i class="fa-solid fa-user" aria-hidden="true"></i>
+            Informations personnelles
+          </h3>
+          <div class="details-grid">
+            <div class="detail-item">
+              <label>Nom complet:</label>
+              <p>{{ selectedLivreurEnAttente.nom_complet }}</p>
+            </div>
+            <div class="detail-item">
+              <label>Email:</label>
+              <p>{{ selectedLivreurEnAttente.email }}</p>
+            </div>
+            <div class="detail-item">
+              <label>Téléphone:</label>
+              <p>{{ selectedLivreurEnAttente.telephone || '-' }}</p>
+            </div>
+            <div class="detail-item">
+              <label>Date d'inscription:</label>
+              <p>{{ formatDate(selectedLivreurEnAttente.date_creation) }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Informations de livraison -->
+        <div class="details-section">
+          <h3>
+            <i class="fa-solid fa-truck" aria-hidden="true"></i>
+            Informations de livraison
+          </h3>
+          <div class="details-grid">
+            <div class="detail-item">
+              <label>Type de véhicule:</label>
+              <p>{{ selectedLivreurEnAttente.type_vehicule || '-' }}</p>
+            </div>
+            <div class="detail-item">
+              <label>Numéro de permis:</label>
+              <p>{{ selectedLivreurEnAttente.numero_permis || '-' }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Documents -->
+        <div class="details-section">
+          <h3>
+            <i class="fa-solid fa-file-upload" aria-hidden="true"></i>
+            Documents uploadés
+          </h3>
+          
+          <div *ngIf="selectedLivreurEnAttente.documents && selectedLivreurEnAttente.documents.length > 0" class="documents-grid">
+            <div *ngFor="let doc of selectedLivreurEnAttente.documents" class="document-card">
+              <div class="doc-preview">
+                <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>
+                <p class="doc-type">
+                  {{ doc.type_document === 'permis' ? 'Permis de conduire' : 'Carte d\'identité' }}
+                </p>
+              </div>
+              <div class="doc-actions">
+                <p class="doc-date">{{ formatDate(doc.date_upload) }}</p>
+                <a 
+                  [href]="getDocumentUrl(doc.chemin_fichier)" 
+                  target="_blank" 
+                  class="btn btn-sm btn-primary">
+                  <i class="fa-solid fa-download" aria-hidden="true"></i>
+                  Télécharger
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div *ngIf="!selectedLivreurEnAttente.documents || selectedLivreurEnAttente.documents.length === 0" class="alert alert-warning">
+            <i class="fa-solid fa-exclamation-triangle" aria-hidden="true"></i>
+            Aucun document uploadé par ce livreur
+          </div>
+        </div>
+
+        <!-- Section: Actions de vérification -->
+        <div class="details-section action-section">
+          <h3>
+            <i class="fa-solid fa-check-circle" aria-hidden="true"></i>
+            Action de vérification
+          </h3>
+          
+          <div class="verification-actions">
+            <button 
+              class="btn btn-lg btn-success"
+              (click)="accepterLivreur(selectedLivreurEnAttente.livreur_id || selectedLivreurEnAttente.id)"
+              [disabled]="acceptRejectLoading">
+              <i class="fa-solid fa-check" aria-hidden="true"></i>
+              Accepter et Activer
+            </button>
+
+            <div class="rejection-section">
+              <label>Ou rejeter avec une raison:</label>
+              <textarea 
+                class="form-textarea"
+                [(ngModel)]="raisonRejet"
+                placeholder="Entrez la raison du rejet..."
+                [disabled]="acceptRejectLoading"
+                rows="3"></textarea>
+              <button 
+                class="btn btn-lg btn-danger"
+                (click)="rejeterLivreur(selectedLivreurEnAttente.livreur_id || selectedLivreurEnAttente.id)"
+                [disabled]="acceptRejectLoading || !raisonRejet.trim()">
+                <i class="fa-solid fa-times" aria-hidden="true"></i>
+                Rejeter
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-outline" (click)="closeLivreurDetailsModal()" [disabled]="acceptRejectLoading">
+        Fermer
+      </button>
+    </div>
+  </div>
+</div>

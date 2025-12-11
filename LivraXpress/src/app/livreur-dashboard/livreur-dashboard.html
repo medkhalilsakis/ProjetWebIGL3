@@ -1,0 +1,612 @@
+<div class="livreur-dashboard">
+  <!-- Header Navigation (same as accueil) -->
+  <header class="main-header">
+    <div class="container">
+      <div class="logo-section">
+        <mat-icon class="logo-icon">local_shipping</mat-icon>
+        <span class="logo-text">Livra<span class="logo-highlight">Xpress</span></span>
+      </div>
+
+      <nav class="main-nav">
+        <a routerLink="/" class="nav-item">Accueil</a>
+        <a routerLink="/produits" class="nav-item">Produits</a>
+        <a routerLink="/cities" class="nav-item">Villes</a>
+        <a routerLink="/contact" class="nav-item">Contact</a>
+      </nav>
+
+      <div class="auth-buttons">
+        <button mat-stroked-button (click)="logout()" class="signin-btn">
+          <mat-icon>logout</mat-icon>
+          <span>Déconnexion</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="dashboard-container">
+    <!-- Profile Header -->
+    <header class="dashboard-header">
+      <div class="profile-section">
+        <div class="avatar-container">
+          <img [src]="resolveImage(profile?.photo_profil)" [alt]="profile?.nom_complet" class="avatar" />
+          <span *ngIf="profile?.verifie" class="verified-badge" title="Vérifié">
+            <mat-icon>verified</mat-icon>
+          </span>
+        </div>
+        <div class="profile-info">
+          <h1>{{ profile?.nom_complet || 'Livreur' }}</h1>
+          <p class="subtitle">{{ profile?.email || '' }}</p>
+          <div class="profile-meta">
+            <span class="badge" [ngClass]="getStatusBadge(status)">{{ getStatusLabel(status) }}</span>
+            <span *ngIf="profile?.zone_livraison" class="zone-badge">
+              <mat-icon>location_on</mat-icon>
+              {{ profile?.zone_livraison }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-controls">
+        <button 
+          mat-raised-button 
+          [class.active]="status === 'disponible'"
+          (click)="updateStatus('disponible')"
+          class="status-btn success"
+        >
+          <mat-icon>check_circle</mat-icon>
+          Disponible
+        </button>
+        <button 
+          mat-stroked-button 
+          [class.active]="status === 'en_pause'"
+          (click)="updateStatus('en_pause')"
+          class="status-btn warning"
+        >
+          <mat-icon>pause_circle</mat-icon>
+          En pause
+        </button>
+        <button 
+          mat-stroked-button 
+          [class.active]="status === 'hors_ligne'"
+          (click)="updateStatus('hors_ligne')"
+          class="status-btn secondary"
+        >
+          <mat-icon>stop_circle</mat-icon>
+          Hors ligne
+        </button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="tab-nav">
+      <button [class.active]="activeTab === 'accueil'" (click)="switchTab('accueil')">
+        <mat-icon>dashboard</mat-icon>
+        Accueil
+      </button>
+      <button [class.active]="activeTab === 'commandes'" (click)="switchTab('commandes')">
+        <mat-icon>shopping_bag</mat-icon>
+        Commandes
+        <span *ngIf="activeDeliveries.length > 0" class="badge badge-danger">{{ activeDeliveries.length }}</span>
+      </button>
+      <button [class.active]="activeTab === 'revenus'" (click)="switchTab('revenus')">
+        <mat-icon>account_balance_wallet</mat-icon>
+        Revenus
+      </button>
+      <button [class.active]="activeTab === 'statistiques'" (click)="switchTab('statistiques')">
+        <mat-icon>bar_chart</mat-icon>
+        Statistiques
+      </button>
+      <button [class.active]="activeTab === 'carte'" (click)="switchTab('carte')">
+        <mat-icon>map</mat-icon>
+        Carte
+      </button>
+      <button [class.active]="activeTab === 'support'" (click)="switchTab('support')">
+        <mat-icon>support_agent</mat-icon>
+        Support
+        <span *ngIf="unreadCount > 0" class="badge badge-danger">{{ unreadCount }}</span>
+      </button>
+      <button [class.active]="activeTab === 'parametres'" (click)="switchTab('parametres')">
+        <mat-icon>settings</mat-icon>
+        Paramètres
+      </button>
+    </nav>
+
+    <!-- Accueil Tab -->
+    <section *ngIf="activeTab === 'accueil'" class="panel">
+      <!-- Quick Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon success">
+            <mat-icon>local_shipping</mat-icon>
+          </div>
+          <div class="stat-content">
+            <p class="stat-label">Commandes actives</p>
+            <h3>{{ activeDeliveries.length }}</h3>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon info">
+            <mat-icon>attach_money</mat-icon>
+          </div>
+          <div class="stat-content">
+            <p class="stat-label">Gains du jour</p>
+            <h3>{{ formatCurrency(earnings.gains_jour) }}</h3>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon warning">
+            <mat-icon>star</mat-icon>
+          </div>
+          <div class="stat-content">
+            <p class="stat-label">Note moyenne</p>
+            <h3>{{ stats.note_moyenne }}/5</h3>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon primary">
+            <mat-icon>trending_up</mat-icon>
+          </div>
+          <div class="stat-content">
+            <p class="stat-label">Classement</p>
+            <h3>#{{ stats.classement }}</h3>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Deliveries -->
+      <div class="card" *ngIf="activeDeliveries.length > 0">
+        <h3>Commandes en cours</h3>
+        <div class="deliveries-list">
+          <div *ngFor="let delivery of activeDeliveries" class="delivery-item" (click)="viewDelivery(delivery)">
+            <div class="delivery-header">
+              <strong>{{ delivery.numero_suivi }}</strong>
+              <span class="badge" [ngClass]="getStatusBadge(delivery.statut)">{{ getStatusLabel(delivery.statut) }}</span>
+            </div>
+            <p>{{ delivery.fournisseur }}</p>
+            <p class="text-muted">{{ formatCurrency(delivery.montant_total) }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Available Deliveries -->
+      <div class="card" *ngIf="status === 'disponible' && availableDeliveries.length > 0">
+        <h3>Nouvelles commandes disponibles</h3>
+        <div class="deliveries-list">
+          <div *ngFor="let delivery of availableDeliveries" class="delivery-item available" (click)="viewDelivery(delivery)">
+            <div class="delivery-header">
+              <strong>{{ delivery.numero_suivi }}</strong>
+              <span class="badge badge-info">Disponible</span>
+            </div>
+            <p>{{ delivery.fournisseur }}</p>
+            <p class="text-muted">{{ formatCurrency(delivery.montant_total) }}</p>
+            <button mat-raised-button color="primary" (click)="acceptDelivery(delivery.id); $event.stopPropagation()">
+              Accepter
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Earnings Summary -->
+      <div class="card">
+        <h3>Revenus</h3>
+        <div class="earnings-summary">
+          <div class="earning-item">
+            <span>Solde actuel</span>
+            <strong>{{ formatCurrency(earnings.solde_actuel) }}</strong>
+          </div>
+          <div class="earning-item">
+            <span>Gains du mois</span>
+            <strong>{{ formatCurrency(earnings.gains_mois) }}</strong>
+          </div>
+          <div class="earning-item">
+            <span>Bonus</span>
+            <strong class="text-success">{{ formatCurrency(earnings.bonus) }}</strong>
+          </div>
+        </div>
+        <button mat-raised-button color="primary" (click)="showPayoutForm = true">Demander un virement</button>
+      </div>
+    </section>
+
+    <!-- Commandes Tab -->
+    <section *ngIf="activeTab === 'commandes'" class="panel">
+      <div class="panel-header">
+        <h2>Commandes</h2>
+        <div class="tabs">
+          <button [class.active]="selectedDelivery === null" (click)="selectedDelivery = null">En cours</button>
+          <button [class.active]="selectedDelivery !== null" (click)="loadDeliveryHistory()">Historique</button>
+        </div>
+      </div>
+
+      <!-- Active Deliveries -->
+      <div *ngIf="selectedDelivery === null">
+        <div *ngIf="loadingDeliveries" class="loading">Chargement...</div>
+        <div *ngIf="!loadingDeliveries && activeDeliveries.length === 0" class="empty-state">
+          <mat-icon>inbox</mat-icon>
+          <p>Aucune commande en cours</p>
+        </div>
+        <div *ngIf="!loadingDeliveries" class="deliveries-grid">
+          <div *ngFor="let delivery of activeDeliveries" class="delivery-card" (click)="viewDelivery(delivery)">
+            <div class="delivery-card-header">
+              <strong>{{ delivery.numero_suivi }}</strong>
+              <span class="badge" [ngClass]="getStatusBadge(delivery.statut)">{{ getStatusLabel(delivery.statut) }}</span>
+            </div>
+            <div class="delivery-card-body">
+              <p><strong>Restaurant:</strong> {{ delivery.fournisseur }}</p>
+              <p><strong>Montant:</strong> {{ formatCurrency(delivery.montant_total) }}</p>
+              <p *ngIf="delivery.temps_estime_minutes"><strong>Temps estimé:</strong> {{ delivery.temps_estime_minutes }} min</p>
+            </div>
+            <div class="delivery-card-actions">
+              <button mat-raised-button color="primary" (click)="viewDelivery(delivery); $event.stopPropagation()">
+                Voir détails
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div *ngIf="selectedDelivery !== null">
+        <div class="deliveries-grid">
+          <div *ngFor="let delivery of deliveryHistory" class="delivery-card">
+            <div class="delivery-card-header">
+              <strong>{{ delivery.numero_suivi }}</strong>
+              <span class="badge badge-success">Livrée</span>
+            </div>
+            <div class="delivery-card-body">
+              <p><strong>Restaurant:</strong> {{ delivery.fournisseur }}</p>
+              <p><strong>Montant:</strong> {{ formatCurrency(delivery.montant_total) }}</p>
+              <p><strong>Date:</strong> {{ delivery.date_commande | date:'short' }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Delivery Details Modal -->
+    <div *ngIf="showDeliveryDetails && selectedDelivery" class="modal-overlay" (click)="showDeliveryDetails = false">
+      <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h2>Détails de la commande</h2>
+          <button mat-icon-button (click)="showDeliveryDetails = false">
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="detail-section">
+            <h3>{{ selectedDelivery.numero_suivi }}</h3>
+            <p><strong>Restaurant:</strong> {{ selectedDelivery.fournisseur }}</p>
+            <p><strong>Montant:</strong> {{ formatCurrency(selectedDelivery.montant_total) }}</p>
+          </div>
+
+          <div class="detail-section" *ngIf="selectedDelivery.adresse_pickup">
+            <h4>Adresse de récupération</h4>
+            <p>{{ selectedDelivery.adresse_pickup.rue }}</p>
+            <p>{{ selectedDelivery.adresse_pickup.ville }} {{ selectedDelivery.adresse_pickup.code_postal }}</p>
+          </div>
+
+          <div class="detail-section" *ngIf="selectedDelivery.adresse_livraison">
+            <h4>Adresse de livraison</h4>
+            <p>{{ selectedDelivery.adresse_livraison.rue }}</p>
+            <p>{{ selectedDelivery.adresse_livraison.ville }} {{ selectedDelivery.adresse_livraison.code_postal }}</p>
+          </div>
+
+          <div class="detail-section" *ngIf="selectedDelivery.instructions_speciales">
+            <h4>Instructions spéciales</h4>
+            <p>{{ selectedDelivery.instructions_speciales }}</p>
+          </div>
+
+          <div class="detail-section" *ngIf="selectedDelivery.distance_km">
+            <h4>Distance</h4>
+            <p>{{ selectedDelivery.distance_km }} km</p>
+            <p *ngIf="selectedDelivery.temps_estime_minutes">Temps estimé: {{ selectedDelivery.temps_estime_minutes }} min</p>
+          </div>
+
+          <!-- Map placeholder -->
+          <div class="map-placeholder">
+            <mat-icon>map</mat-icon>
+            <p>Carte avec itinéraire</p>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="action-buttons">
+            <button *ngIf="selectedDelivery.statut === 'pret_pour_livraison'" 
+                    mat-raised-button 
+                    color="primary"
+                    (click)="acceptDelivery(selectedDelivery.id)">
+              Accepter
+            </button>
+            <button *ngIf="selectedDelivery.statut === 'acceptee_par_livreur'"
+                    mat-raised-button
+                    color="accent"
+                    (click)="updateDeliveryStatus(selectedDelivery.id, 'en_route_restaurant')">
+              En route vers le restaurant
+            </button>
+            <button *ngIf="selectedDelivery.statut === 'en_route_restaurant'"
+                    mat-raised-button
+                    color="accent"
+                    (click)="updateDeliveryStatus(selectedDelivery.id, 'commande_recuperee')">
+              Commande récupérée
+            </button>
+            <button *ngIf="selectedDelivery.statut === 'commande_recuperee'"
+                    mat-raised-button
+                    color="primary"
+                    (click)="updateDeliveryStatus(selectedDelivery.id, 'en_livraison')">
+              En route vers le client
+            </button>
+            <button *ngIf="selectedDelivery.statut === 'en_livraison'"
+                    mat-raised-button
+                    color="success"
+                    (click)="updateDeliveryStatus(selectedDelivery.id, 'livree')">
+              Livraison effectuée
+            </button>
+            <button mat-stroked-button (click)="rejectDelivery(selectedDelivery.id)">
+              Refuser
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Revenus Tab -->
+    <section *ngIf="activeTab === 'revenus'" class="panel">
+      <h2>Revenus et Paiements</h2>
+
+      <!-- Earnings Overview -->
+      <div class="earnings-overview">
+        <div class="earning-card primary">
+          <h3>Solde actuel</h3>
+          <h1>{{ formatCurrency(earnings.solde_actuel) }}</h1>
+        </div>
+        <div class="earning-card">
+          <h4>Gains du jour</h4>
+          <h2>{{ formatCurrency(earnings.gains_jour) }}</h2>
+        </div>
+        <div class="earning-card">
+          <h4>Gains de la semaine</h4>
+          <h2>{{ formatCurrency(earnings.gains_semaine) }}</h2>
+        </div>
+        <div class="earning-card">
+          <h4>Gains du mois</h4>
+          <h2>{{ formatCurrency(earnings.gains_mois) }}</h2>
+        </div>
+        <div class="earning-card success">
+          <h4>Bonus</h4>
+          <h2>{{ formatCurrency(earnings.bonus) }}</h2>
+        </div>
+        <div class="earning-card warning">
+          <h4>Commissions</h4>
+          <h2>{{ formatCurrency(earnings.commissions) }}</h2>
+        </div>
+      </div>
+
+      <button mat-raised-button color="primary" (click)="showPayoutForm = true">
+        <mat-icon>account_balance</mat-icon>
+        Demander un virement
+      </button>
+
+      <!-- Payment History -->
+      <div class="card">
+        <h3>Historique des paiements</h3>
+        <div class="payment-list">
+          <div *ngFor="let payment of paymentHistory" class="payment-item">
+            <div>
+              <strong>{{ formatCurrency(payment.montant) }}</strong>
+              <p class="text-muted">{{ payment.date | date:'short' }}</p>
+            </div>
+            <div>
+              <span class="badge" [ngClass]="{
+                'badge-success': payment.statut === 'paye',
+                'badge-warning': payment.statut === 'en_attente',
+                'badge-danger': payment.statut === 'rejete'
+              }">{{ payment.statut }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Statistiques Tab -->
+    <section *ngIf="activeTab === 'statistiques'" class="panel">
+      <h2>Statistiques de Performance</h2>
+
+      <div class="stats-grid-large">
+        <div class="stat-card-large">
+          <div class="stat-icon-large success">
+            <mat-icon>check_circle</mat-icon>
+          </div>
+          <h3>Taux d'acceptation</h3>
+          <h1>{{ stats.taux_acceptation }}%</h1>
+        </div>
+        <div class="stat-card-large">
+          <div class="stat-icon-large info">
+            <mat-icon>schedule</mat-icon>
+          </div>
+          <h3>Temps de livraison moyen</h3>
+          <h1>{{ stats.temps_livraison_moyen }} min</h1>
+        </div>
+        <div class="stat-card-large">
+          <div class="stat-icon-large warning">
+            <mat-icon>star</mat-icon>
+          </div>
+          <h3>Note moyenne</h3>
+          <h1>{{ stats.note_moyenne }}/5</h1>
+        </div>
+        <div class="stat-card-large">
+          <div class="stat-icon-large primary">
+            <mat-icon>local_shipping</mat-icon>
+          </div>
+          <h3>Commandes livrées</h3>
+          <h1>{{ stats.nombre_livraisons }}</h1>
+        </div>
+        <div class="stat-card-large">
+          <div class="stat-icon-large accent">
+            <mat-icon>emoji_events</mat-icon>
+          </div>
+          <h3>Classement</h3>
+          <h1>#{{ stats.classement }}</h1>
+        </div>
+        <div class="stat-card-large">
+          <div class="stat-icon-large">
+            <mat-icon>workspace_premium</mat-icon>
+          </div>
+          <h3>Niveau</h3>
+          <h1>{{ stats.niveau }}</h1>
+        </div>
+      </div>
+    </section>
+
+    <!-- Carte Tab -->
+    <section *ngIf="activeTab === 'carte'" class="panel">
+      <h2>Carte et Navigation</h2>
+      <div class="map-container" #mapContainer>
+        <div class="map-placeholder-full">
+          <mat-icon>map</mat-icon>
+          <p>Carte en temps réel avec zones actives</p>
+          <p *ngIf="currentLocation" class="text-muted">
+            Position: {{ currentLocation.lat | number:'1.4-4' }}, {{ currentLocation.lng | number:'1.4-4' }}
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Support Tab -->
+    <section *ngIf="activeTab === 'support'" class="panel">
+      <h2>Support et Notifications</h2>
+
+      <div class="notifications-section">
+        <h3>Notifications</h3>
+        <div class="notifications-list">
+          <div *ngFor="let notif of notifications" class="notification-item" [class.unread]="!notif.lu">
+            <mat-icon>{{ notif.type === 'commande' ? 'shopping_bag' : 'info' }}</mat-icon>
+            <div class="notification-content">
+              <strong>{{ notif.titre }}</strong>
+              <p>{{ notif.message }}</p>
+              <small>{{ notif.date_creation | date:'short' }}</small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>FAQ Livreur</h3>
+        <div class="faq-list">
+          <div class="faq-item">
+            <strong>Comment accepter une commande ?</strong>
+            <p>Cliquez sur "Accepter" dans la liste des commandes disponibles.</p>
+          </div>
+          <div class="faq-item">
+            <strong>Comment mettre à jour mon statut ?</strong>
+            <p>Utilisez les boutons en haut du dashboard pour changer votre statut.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Paramètres Tab -->
+    <section *ngIf="activeTab === 'parametres'" class="panel">
+      <h2>Paramètres</h2>
+
+      <!-- Vehicle Info -->
+      <div class="card">
+        <h3>Informations du véhicule</h3>
+        <form [formGroup]="vehicleForm">
+          <div class="form-group">
+            <label>Type de véhicule</label>
+            <select formControlName="type_vehicule">
+              <option value="velo">Vélo</option>
+              <option value="moto">Moto</option>
+              <option value="voiture">Voiture</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Numéro d'immatriculation</label>
+            <input type="text" formControlName="numero_immatriculation" />
+          </div>
+          <button mat-raised-button color="primary">Enregistrer</button>
+        </form>
+      </div>
+
+      <!-- Availability -->
+      <div class="card">
+        <h3>Disponibilités</h3>
+        <form [formGroup]="availabilityForm">
+          <div class="availability-grid">
+            <label *ngFor="let day of ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']">
+              <input type="checkbox" [formControlName]="day" />
+              {{ day | titlecase }}
+            </label>
+          </div>
+          <div class="form-group">
+            <label>Heure de début</label>
+            <input type="time" formControlName="heure_debut" />
+          </div>
+          <div class="form-group">
+            <label>Heure de fin</label>
+            <input type="time" formControlName="heure_fin" />
+          </div>
+          <button mat-raised-button color="primary">Enregistrer</button>
+        </form>
+      </div>
+
+      <!-- Documents -->
+      <div class="card">
+        <h3>Documents</h3>
+        <form [formGroup]="documentsForm">
+          <div class="form-group">
+            <label>Permis de conduire</label>
+            <input type="file" accept="image/*,.pdf" />
+          </div>
+          <div class="form-group">
+            <label>Assurance</label>
+            <input type="file" accept="image/*,.pdf" />
+          </div>
+          <div class="form-group">
+            <label>Carte d'identité</label>
+            <input type="file" accept="image/*,.pdf" />
+          </div>
+          <button mat-raised-button color="primary">Télécharger</button>
+        </form>
+      </div>
+
+      <!-- Zones de livraison et tarif -->
+      <div class="card">
+        <h3>Zones de livraison & Tarif</h3>
+        <p>Choisissez les gouvernorats où vous livrez et définissez votre prix par km.</p>
+        <div class="zones-grid">
+          <label *ngFor="let gov of GOVERNORATES" class="zone-item">
+            <input type="checkbox" [checked]="isZoneSelected(gov)" (change)="toggleZone(gov)" />
+            {{ gov }}
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Prix par km (DT)</label>
+          <input type="number" [(ngModel)]="tarifParKm" min="0" step="0.01" />
+        </div>
+        <button mat-raised-button color="primary" (click)="saveDeliveryZones()">Enregistrer zones & tarif</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Payout Modal -->
+  <div *ngIf="showPayoutForm" class="modal-overlay" (click)="showPayoutForm = false">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <h2>Demander un virement</h2>
+        <button mat-icon-button (click)="showPayoutForm = false">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p>Solde disponible: <strong>{{ formatCurrency(earnings.solde_actuel) }}</strong></p>
+        <div class="form-group">
+          <label>Montant</label>
+          <input type="number" [(ngModel)]="payoutAmount" [max]="earnings.solde_actuel" />
+        </div>
+        <button mat-raised-button color="primary" (click)="requestPayout()" [disabled]="requestingPayout">
+          {{ requestingPayout ? 'Traitement...' : 'Demander' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
