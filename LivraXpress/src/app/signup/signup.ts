@@ -1,4 +1,3 @@
-// frontend/src/app/features/auth/register/register.component.ts
 import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -96,9 +95,7 @@ export class Signup implements OnInit {
   }
 
   ngOnInit(): void {
-    // Ne pas rediriger automatiquement - laisser l'utilisateur accéder à la page d'inscription
-    // même s'il est connecté (il peut vouloir créer un autre compte)
-    // La redirection se fera seulement après soumission réussie du formulaire
+
   }
 
   get f() { return this.registerForm.controls; }

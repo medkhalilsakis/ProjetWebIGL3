@@ -1,4 +1,3 @@
-// routes/utilisateurs.routes.js
 const express = require('express');
 const pool = require('../config/database');
 const { body, param, query, validationResult } = require('express-validator');

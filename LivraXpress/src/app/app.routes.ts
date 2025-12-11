@@ -19,15 +19,13 @@ export const routes: Routes = [
     pathMatch: 'full'
   },
 
-  // 🔑 Auth pages
+
   { path: 'login', component: Login },
   { path: 'register', component: Signup },
 
-  // 🛍️ Products listing (public)
   { path: 'produits', component: ListProduits },
   { path: 'list-produits', component: ListProduits },
 
-  // 🧑‍💼 Routes protégées client
   {
     path: 'client',
     canActivate: [AuthGuard, RoleGuard],
@@ -38,7 +36,6 @@ export const routes: Routes = [
     ]
   },
 
-  // 🏪 Routes protégées fournisseur
   {
     path: 'fournisseur',
     canActivate: [AuthGuard, RoleGuard],
@@ -49,7 +46,6 @@ export const routes: Routes = [
     ]
   },
 
-  // 👑 Routes protégées admin
   {
     path: 'admin',
     canActivate: [AuthGuard, RoleGuard],

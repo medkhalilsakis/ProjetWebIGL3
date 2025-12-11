@@ -27,7 +27,6 @@ export class Login implements OnInit {
     private authService: AuthService,
     private toastService: ToastService
   ) {
-    // formulaire initial avec "rememberMe"
     this.loginForm = this.formBuilder.group({
       email: ['', [Validators.required, Validators.email]],
       mot_de_passe: ['', [Validators.required, Validators.minLength(6)]],
@@ -36,7 +35,6 @@ export class Login implements OnInit {
   }
 
   ngOnInit(): void {
-    // si déjà connecté, rediriger directement
     try {
       if (this.authService?.isAuthenticated) {
         const role = this.authService.userRole || (this.authService.currentUserValue?.role) || 'client';
@@ -44,10 +42,9 @@ export class Login implements OnInit {
         return;
       }
     } catch (e) {
-      // ignore
+      
     }
 
-    // returnUrl si fourni
     const candidate = this.route.snapshot.queryParams['returnUrl'];
     if (candidate && typeof candidate === 'string' && candidate.startsWith('/')) {
       this.returnUrl = candidate;

@@ -27,19 +27,14 @@
     </div>
   </header>
 
-  <!-- Floating Cart Toggle -->
   <button class="floating-cart-toggle" (click)="toggleCartPanel()" aria-label="Ouvrir le panier">
-  <!-- Utiliser FontAwesome si disponible -->
   <i class="fas fa-shopping-cart"></i>
-  <!-- OU utiliser Material Icon si FontAwesome n'est pas disponible -->
-  <!-- <mat-icon>shopping_cart</mat-icon> -->
   
   <span class="cart-badge" *ngIf="cartCount > 0" [attr.aria-label]="cartCount + ' articles dans le panier'">
     {{ cartCount }}
   </span>
 </button>
 
-  <!-- Floating Cart Panel -->
   <aside class="floating-cart-panel" *ngIf="showCartPanel">
     <div class="cart-header">
       <div>

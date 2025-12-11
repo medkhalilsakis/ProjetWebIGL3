@@ -97,11 +97,9 @@ export class NotificationService implements OnDestroy {
   const params: any = { limit: String(limit), offset: String(offset) };
   if (lu !== undefined) params.lu = String(lu);
 
-  // getAuthHeaders() retourne { headers?: HttpHeaders }
   const authHeaders = this.authService.getAuthHeaders();
   const headers = authHeaders?.headers ?? undefined;
 
-  // IMPORTANT : observe: 'body' force l'overload qui retourne Observable<NotificationResponse>
   const options = { params, headers, observe: 'body' as const };
 
   this.http.get<NotificationResponse>(this.apiUrl, options).subscribe({
